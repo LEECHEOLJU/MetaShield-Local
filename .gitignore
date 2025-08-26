@@ -1,0 +1,115 @@
+```gitignore
+' Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+' 환경변수 및 비밀 정보
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+' 데이터베이스 파일
+*.db
+*.sqlite
+*.sqlite3
+
+' 로그 파일
+*.log
+*.out
+
+' 임시 파일
+*.tmp
+*.temp
+*~
+*.bak
+*.orig
+
+' IDE 설정 파일
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+' Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+' 프로젝트 특정 파일
+# cve_cache_3_1.db
+# pattern_dict.db
+*.spec
+
+' API 키 및 설정 파일
+config_local.py
+secrets.py
+
+' 테스트 파일
+test_*.py
+*_test.py
+tests/
+```
+
+# ===========================================
+# MetaShield - 문서 전용 리포지토리 설정
+# ===========================================
+
+# 모든 파일/폴더 제외
+# *
+# */
+
+# 문서 파일들만 포함
+# !README.md
+# !*.md
+# !.gitignore
+
+# 환경 설정 템플릿만 포함 (선택사항)
+# !.env.example
+
+# requirements.txt만 포함 (선택사항)
+# !requirements.txt
+
+# 라이선스 파일 (선택사항)
+# !LICENSE
+# !LICENSE.txt
+
+# GitHub 관련 폴더 (선택사항)
+# !.github/
+# !.github/**
+
+# ===========================================
+# 결과: 다음 파일들만 GitHub에 업로드됩니다:
+# - README.md
+# - GIT_GUIDE.md  
+# - LABORATORY_FEATURES.md
+# - CODE_STRUCTURE.md
+# - UI_DEVELOPMENT_LOG.md
+# - CLAUDE.md
+# - .gitignore
+# - .env.example (있다면)
+# =========================================== 

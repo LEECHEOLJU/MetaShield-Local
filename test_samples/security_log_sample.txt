@@ -1,0 +1,39 @@
+# ===========================================
+# MetaShield IOC 분석기 테스트 샘플
+# ===========================================
+
+2025-08-26 14:30:15 [ALERT] Suspicious network connection detected
+Source IP: 185.220.101.32
+Destination: malware-command.evil-domain.com
+Process: C:\Windows\Temp\suspicious_process.exe
+File Hash (MD5): d41d8cd98f00b204e9800998ecf8427e
+File Hash (SHA1): da39a3ee5e6b4b0d3255bfef95601890afd80709
+Registry Key: HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\Malware
+Email Contact: attacker@suspicious-domain.tk
+Command Line: powershell.exe -enc JABzAD0ATgBlAHcA
+
+2025-08-26 14:31:22 [WARNING] Phishing email detected
+From: security@bank-phishing.ml
+To: victim@company.com  
+URL: http://fake-banking-site.bit.ly/login
+IP: 192.168.1.100
+File Path: C:\Users\victim\Downloads\invoice.pdf.exe
+
+2025-08-26 14:32:45 [CRITICAL] Ransomware activity suspected
+Process: C:\Windows\System32\wbem\ransomware.exe
+Network: http://darkweb-payment.onion/payment
+Bitcoin Address: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+Registry: HKEY_CURRENT_USER\Software\CryptoLocker
+DNS Query: tor-gateway.suspicious.tk
+
+2025-08-26 14:33:10 [INFO] Legitimate activity
+Process: C:\Program Files\Google\Chrome\chrome.exe
+URL: https://www.google.com
+IP: 8.8.8.8
+
+# 추가 테스트 IOC들
+suspicious-api.tk
+malware.hash.sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+phishing@evil.ml
+http://malicious-download.bit.ly/payload.exe
+HKEY_LOCAL_MACHINE\SOFTWARE\BadSoft\Config

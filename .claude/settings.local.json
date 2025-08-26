@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(for file in *.py)",
+      "Bash(do echo \"=== $file ===\")",
+      "Bash(wc:*)",
+      "Bash(done)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(git --version)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
