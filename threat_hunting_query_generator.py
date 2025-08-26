@@ -111,6 +111,43 @@ class ThreatHuntingQueryGenerator:
                     variables=['ioc_value']
                 )
             },
+            'sentinel': {
+                'ip_search': QueryTemplate(
+                    platform='sentinel',
+                    query_type='kql',
+                    template='union SecurityEvent, CommonSecurityLog, DnsEvents, W3CIISLog\n| where TimeGenerated >= ago({time_range})\n| where (SrcIP == "{ioc_value}" or DstIP == "{ioc_value}" or ClientIP == "{ioc_value}" or SourceIP == "{ioc_value}" or DestinationIP == "{ioc_value}" or c_ip == "{ioc_value}")\n| summarize count() by bin(TimeGenerated, 1h), SrcIP, DstIP, Activity, Computer\n| sort by TimeGenerated desc',
+                    description='Microsoft Sentinel IP 주소 활동 검색',
+                    variables=['time_range', 'ioc_value']
+                ),
+                'domain_search': QueryTemplate(
+                    platform='sentinel',
+                    query_type='kql',
+                    template='union DnsEvents, CommonSecurityLog, W3CIISLog\n| where TimeGenerated >= ago({time_range})\n| where (Name contains "{ioc_value}" or RequestUri contains "{ioc_value}" or cs_host contains "{ioc_value}" or QueryName contains "{ioc_value}")\n| summarize count() by bin(TimeGenerated, 1h), Name, QueryName, ClientIP, Computer\n| sort by TimeGenerated desc',
+                    description='Microsoft Sentinel 도메인 활동 검색',
+                    variables=['time_range', 'ioc_value']
+                ),
+                'hash_search': QueryTemplate(
+                    platform='sentinel',
+                    query_type='kql',
+                    template='union SecurityEvent, DeviceFileEvents, DeviceProcessEvents\n| where TimeGenerated >= ago({time_range})\n| where (MD5 == "{ioc_value}" or SHA1 == "{ioc_value}" or SHA256 == "{ioc_value}" or FileHashSha1 == "{ioc_value}" or FileHashSha256 == "{ioc_value}" or FileHashMd5 == "{ioc_value}")\n| summarize count() by bin(TimeGenerated, 1h), FileName, FolderPath, ProcessCommandLine, Computer\n| sort by TimeGenerated desc',
+                    description='Microsoft Sentinel 파일 해시 검색',
+                    variables=['time_range', 'ioc_value']
+                ),
+                'email_search': QueryTemplate(
+                    platform='sentinel',
+                    query_type='kql',
+                    template='union EmailEvents, OfficeActivity\n| where TimeGenerated >= ago({time_range})\n| where (SenderFromAddress contains "{ioc_value}" or RecipientEmailAddress contains "{ioc_value}" or SenderMailFromAddress contains "{ioc_value}" or UserId contains "{ioc_value}")\n| summarize count() by bin(TimeGenerated, 1h), SenderFromAddress, RecipientEmailAddress, Subject, Computer\n| sort by TimeGenerated desc',
+                    description='Microsoft Sentinel 이메일 활동 검색',
+                    variables=['time_range', 'ioc_value']
+                ),
+                'process_search': QueryTemplate(
+                    platform='sentinel',
+                    query_type='kql',
+                    template='union SecurityEvent, DeviceProcessEvents\n| where TimeGenerated >= ago({time_range})\n| where (Process contains "{ioc_value}" or ProcessName contains "{ioc_value}" or CommandLine contains "{ioc_value}" or ProcessCommandLine contains "{ioc_value}")\n| summarize count() by bin(TimeGenerated, 1h), Process, ProcessName, CommandLine, Computer, Account\n| sort by TimeGenerated desc',
+                    description='Microsoft Sentinel 프로세스 활동 검색',
+                    variables=['time_range', 'ioc_value']
+                )
+            },
             'sigma': {
                 'process_creation': QueryTemplate(
                     platform='sigma',
@@ -439,6 +476,101 @@ class ThreatHuntingQueryGenerator:
                 queries.append(query)
         
         return queries
+    
+    async def generate_ai_query_recommendations(self, ioc: IOCInput, context: str = "") -> List[GeneratedQuery]:
+        """AI 기반 쿼리 추천 생성"""
+        try:
+            # AI 프롬프트 구성
+            prompt = f"""
+당신은 위협 헌팅 전문가입니다. 다음 IOC에 대한 효과적인 헌팅 쿼리를 추천해주세요.
+
+IOC 정보:
+- 타입: {ioc.ioc_type}
+- 값: {ioc.ioc_value}
+- 설명: {ioc.description}
+- 신뢰도: {ioc.confidence}
+- 추가 컨텍스트: {context}
+
+다음 플랫폼에 대한 헌팅 쿼리를 생성해주세요:
+1. Microsoft Sentinel (KQL)
+2. Splunk (SPL)  
+3. Elasticsearch (DSL)
+
+각 쿼리는 다음을 포함해야 합니다:
+- 시간 범위 필터링
+- 관련 데이터 소스들
+- 집계 및 통계
+- 이상 탐지 로직
+
+실용적이고 효과적인 쿼리로 작성해주세요.
+"""
+
+            # Azure OpenAI API 호출
+            if not self.ai_config:
+                raise Exception("AI 설정이 없습니다.")
+                
+            from openai import AzureOpenAI
+            
+            client = AzureOpenAI(
+                api_key=self.ai_config.api_key,
+                api_version=self.ai_config.api_version,
+                azure_endpoint=self.ai_config.endpoint
+            )
+            
+            response = client.chat.completions.create(
+                model=self.ai_config.deployment_name,
+                messages=[
+                    {"role": "system", "content": "당신은 사이버 보안 위협 헌팅 전문가입니다."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=2000
+            )
+            
+            ai_response = response.choices[0].message.content
+            
+            # AI 응답을 파싱하여 쿼리 객체로 변환
+            queries = self._parse_ai_response_to_queries(ai_response, ioc)
+            return queries
+            
+        except Exception as e:
+            print(f"AI 쿼리 추천 생성 오류: {str(e)}")
+            return []
+    
+    def _parse_ai_response_to_queries(self, ai_response: str, ioc: IOCInput) -> List[GeneratedQuery]:
+        """AI 응답을 쿼리 객체로 파싱"""
+        queries = []
+        
+        # 간단한 파싱 로직 (실제로는 더 정교한 파싱이 필요)
+        sections = ai_response.split('\n\n')
+        
+        current_platform = ""
+        current_query = ""
+        
+        for section in sections:
+            if 'sentinel' in section.lower() or 'kql' in section.lower():
+                current_platform = 'sentinel'
+            elif 'splunk' in section.lower() or 'spl' in section.lower():
+                current_platform = 'splunk'  
+            elif 'elasticsearch' in section.lower() or 'elk' in section.lower():
+                current_platform = 'elk'
+            elif current_platform and len(section.strip()) > 50:
+                # 쿼리로 보이는 섹션
+                query = GeneratedQuery(
+                    platform=current_platform,
+                    query_type='ai_recommended',
+                    title=f"AI 추천 {current_platform.upper()} 쿼리",
+                    description=f"{ioc.ioc_type} IOC에 대한 AI 추천 헌팅 쿼리",
+                    query=section.strip(),
+                    time_range='7d',
+                    confidence='high',
+                    references=[],
+                    tags=['ai_generated', f'ioc_{ioc.ioc_type}']
+                )
+                queries.append(query)
+                current_platform = ""
+        
+        return queries
 
 class ThreatHuntingTab(QWidget):
     """위협 헌팅 쿼리 생성 탭 UI"""
@@ -480,52 +612,55 @@ class ThreatHuntingTab(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(16)
         
-        # IOC 입력 섹션
+        # IOC 입력 섹션 - 컴팩트한 디자인
         ioc_group = QGroupBox("🔍 IOC 입력")
         ioc_layout = QVBoxLayout(ioc_group)
-        ioc_layout.setSpacing(8)
+        ioc_layout.setSpacing(12)
         
-        # IOC 타입 선택 - 수평 레이아웃
-        type_layout = QHBoxLayout()
-        type_layout.addWidget(QLabel("타입:"))
+        # 첫 번째 줄: 타입 선택
         self.ioc_type_combo = QComboBox()
         self.ioc_type_combo.addItems([
             "IP 주소", "도메인", "파일해시", "이메일", "URL", 
             "프로세스명", "명령어", "레지스트리", "파일경로"
         ])
-        self.ioc_type_combo.setMinimumWidth(150)
-        type_layout.addWidget(self.ioc_type_combo)
-        type_layout.addStretch()
-        ioc_layout.addLayout(type_layout)
+        self.ioc_type_combo.setMinimumHeight(35)
+        self.ioc_type_combo.setStyleSheet("QComboBox { padding: 8px; font-size: 13px; }")
+        ioc_layout.addWidget(self.ioc_type_combo)
         
-        # IOC 값 입력
+        # 두 번째 줄: IOC 값 입력 (더 크게)
         self.ioc_value_edit = QLineEdit()
-        self.ioc_value_edit.setPlaceholderText("IOC 값을 입력하세요 (예: 192.168.1.100)")
+        self.ioc_value_edit.setPlaceholderText("IOC 값을 입력하세요 (예: 192.168.1.100, malware.exe, abc123def456...)")
+        self.ioc_value_edit.setMinimumHeight(40)
+        self.ioc_value_edit.setStyleSheet("QLineEdit { padding: 10px; font-size: 13px; }")
         ioc_layout.addWidget(self.ioc_value_edit)
         
-        # 신뢰도 선택 - 수평 레이아웃
-        conf_layout = QHBoxLayout()
-        conf_layout.addWidget(QLabel("신뢰도:"))
+        # 세 번째 줄: 2열 레이아웃 (신뢰도 + 버튼)
+        bottom_layout = QHBoxLayout()
+        
+        # 신뢰도 선택
         self.confidence_combo = QComboBox()
         self.confidence_combo.addItems(["높음 (High)", "보통 (Medium)", "낮음 (Low)"])
         self.confidence_combo.setCurrentIndex(1)  # Medium 기본 선택
-        self.confidence_combo.setMinimumWidth(120)
-        conf_layout.addWidget(self.confidence_combo)
-        conf_layout.addStretch()
-        ioc_layout.addLayout(conf_layout)
-        
-        # 설명 입력
-        ioc_layout.addWidget(QLabel("설명 (선택사항):"))
-        self.description_edit = QTextEdit()
-        self.description_edit.setMaximumHeight(60)
-        self.description_edit.setPlaceholderText("IOC에 대한 설명을 입력하세요...")
-        ioc_layout.addWidget(self.description_edit)
+        self.confidence_combo.setMinimumHeight(35)
+        self.confidence_combo.setMinimumWidth(150)
+        self.confidence_combo.setStyleSheet("QComboBox { padding: 8px; font-size: 13px; }")
+        bottom_layout.addWidget(self.confidence_combo)
         
         # IOC 추가 버튼
-        add_btn = ActionButton("➕ IOC 추가", "secondary")
+        add_btn = ActionButton("➕ IOC 추가", "primary")
         add_btn.clicked.connect(self.add_ioc)
-        add_btn.setMaximumWidth(120)
-        ioc_layout.addWidget(add_btn)
+        add_btn.setMinimumWidth(120)
+        add_btn.setMinimumHeight(35)
+        bottom_layout.addWidget(add_btn)
+        
+        ioc_layout.addLayout(bottom_layout)
+        
+        # 설명 입력 (축소하여 선택적)
+        self.description_edit = QTextEdit()
+        self.description_edit.setMaximumHeight(45)
+        self.description_edit.setPlaceholderText("설명 (선택사항)")
+        self.description_edit.setStyleSheet("QTextEdit { padding: 8px; font-size: 12px; }")
+        ioc_layout.addWidget(self.description_edit)
         
         layout.addWidget(ioc_group)
         
@@ -547,9 +682,19 @@ class ThreatHuntingTab(QWidget):
         self.elk_cb.setChecked(True)
         platform_layout.addWidget(self.elk_cb)
         
+        self.sentinel_cb = QCheckBox("Microsoft Sentinel (KQL)")
+        self.sentinel_cb.setChecked(True)
+        platform_layout.addWidget(self.sentinel_cb)
+        
         self.sigma_cb = QCheckBox("Sigma Rules (YAML)")
         self.sigma_cb.setChecked(False)
         platform_layout.addWidget(self.sigma_cb)
+        
+        # AI 쿼리 추천 옵션
+        self.ai_recommend_cb = QCheckBox("🤖 AI 쿼리 추천")
+        self.ai_recommend_cb.setChecked(False)
+        self.ai_recommend_cb.setStyleSheet("QCheckBox { font-weight: bold; color: #1890ff; }")
+        platform_layout.addWidget(self.ai_recommend_cb)
         
         settings_layout.addLayout(platform_layout)
         
@@ -795,9 +940,13 @@ class ThreatHuntingTab(QWidget):
             platforms.append('splunk')
         if self.elk_cb.isChecked():
             platforms.append('elk')
+        if self.sentinel_cb.isChecked():
+            platforms.append('sentinel')
+        if self.sigma_cb.isChecked():
+            platforms.append('sigma')
         
-        if not platforms:
-            QMessageBox.warning(self, "플랫폼 선택", "최소 하나의 플랫폼을 선택해주세요.")
+        if not platforms and not self.ai_recommend_cb.isChecked():
+            QMessageBox.warning(self, "플랫폼 선택", "최소 하나의 플랫폼을 선택하거나 AI 추천을 활성화해주세요.")
             return
         
         try:
@@ -810,10 +959,25 @@ class ThreatHuntingTab(QWidget):
             }
             time_range = time_range_mapping.get(self.time_combo.currentText(), "24h")
             
-            # 쿼리 생성
-            self.generated_queries = self.generator.generate_queries_from_iocs(
-                self.ioc_list, platforms, time_range
-            )
+            # 기본 쿼리 생성
+            self.generated_queries = []
+            
+            # 기존 플랫폼 쿼리 생성
+            if platforms:
+                platform_queries = self.generator.generate_queries_from_iocs(
+                    self.ioc_list, platforms, time_range
+                )
+                self.generated_queries.extend(platform_queries)
+            
+            # AI 쿼리 추천 생성 (비동기이지만 간단한 구현)
+            if self.ai_recommend_cb.isChecked():
+                for ioc in self.ioc_list:
+                    try:
+                        # 동기식으로 AI 쿼리 생성 (간소화)
+                        ai_queries = self._generate_ai_queries_sync(ioc)
+                        self.generated_queries.extend(ai_queries)
+                    except Exception as e:
+                        print(f"AI 쿼리 생성 오류: {str(e)}")
             
             # Sigma 룰 생성 (옵션이 선택된 경우)
             if self.sigma_cb.isChecked():
@@ -993,3 +1157,97 @@ class ThreatHuntingTab(QWidget):
         
         # 첫 번째 탭으로 전환
         self.results_tabs.setCurrentIndex(0)
+    
+    def _generate_ai_queries_sync(self, ioc):
+        """동기식 AI 쿼리 생성 (간소화 버전)"""
+        try:
+            # 간단한 AI 기반 쿼리 생성 시뮬레이션
+            queries = []
+            
+            # IOC 타입별 기본 AI 추천 쿼리 템플릿
+            ai_templates = {
+                'IP 주소': {
+                    'sentinel': f'''// AI 추천: {ioc.ioc_value} IP 주소 종합 분석
+union SecurityEvent, CommonSecurityLog, DeviceNetworkEvents, DeviceLogonEvents
+| where TimeGenerated >= ago(7d)
+| where (SrcIP == "{ioc.ioc_value}" or DstIP == "{ioc.ioc_value}" or RemoteIP == "{ioc.ioc_value}")
+| extend ActivityType = case(
+    EventID == 4624, "Successful Logon",
+    EventID == 4625, "Failed Logon", 
+    EventID == 4648, "Explicit Logon",
+    "Network Activity"
+)
+| summarize 
+    EventCount = count(),
+    UniqueComputers = dcount(Computer),
+    ActivityTypes = make_set(ActivityType),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated)
+    by bin(TimeGenerated, 1h), SrcIP, DstIP
+| sort by TimeGenerated desc''',
+                    
+                    'splunk': f'''# AI 추천: {ioc.ioc_value} IP 주소 행동 분석
+index=* (src_ip="{ioc.ioc_value}" OR dest_ip="{ioc.ioc_value}" OR clientip="{ioc.ioc_value}")
+| eval threat_score=case(
+    action="blocked", 10,
+    action="denied", 8,
+    action="allowed", 2,
+    1)
+| stats 
+    count as events, 
+    dc(dest_ip) as unique_destinations,
+    sum(threat_score) as total_threat_score,
+    values(action) as actions_seen,
+    earliest(_time) as first_seen,
+    latest(_time) as last_seen
+    by src_ip, dest_port
+| eval risk_level=case(
+    total_threat_score>50, "HIGH",
+    total_threat_score>20, "MEDIUM", 
+    "LOW")
+| sort -total_threat_score'''
+                },
+                
+                '도메인': {
+                    'sentinel': f'''// AI 추천: {ioc.ioc_value} 도메인 통신 분석
+union DnsEvents, DeviceNetworkEvents, CommonSecurityLog
+| where TimeGenerated >= ago(7d)
+| where (Name contains "{ioc.ioc_value}" or RemoteUrl contains "{ioc.ioc_value}")
+| extend DomainCategory = case(
+    Name endswith ".exe", "Suspicious Executable Domain",
+    Name contains "temp", "Temporary Domain",
+    Name contains "bit.ly", "URL Shortener",
+    "Standard Domain"
+)
+| summarize 
+    QueryCount = count(),
+    UniqueClients = dcount(ClientIP),
+    Categories = make_set(DomainCategory)
+    by bin(TimeGenerated, 1h), Name, ClientIP
+| where QueryCount > 10 or UniqueClients > 5
+| sort by TimeGenerated desc'''
+                }
+            }
+            
+            # IOC 타입에 따른 AI 쿼리 생성
+            ioc_type_key = ioc.ioc_type
+            if ioc_type_key in ai_templates:
+                for platform, template in ai_templates[ioc_type_key].items():
+                    query = GeneratedQuery(
+                        platform=platform,
+                        query_type='ai_recommended',
+                        title=f"🤖 AI 추천: {ioc_type_key} 분석 쿼리",
+                        description=f"AI가 추천하는 {ioc.ioc_value}에 대한 고급 헌팅 쿼리",
+                        query=template,
+                        time_range='7d',
+                        confidence='high',
+                        references=[],
+                        tags=['ai_generated', 'advanced_hunting', f'ioc_{ioc_type_key}']
+                    )
+                    queries.append(query)
+            
+            return queries
+            
+        except Exception as e:
+            print(f"AI 쿼리 생성 오류: {str(e)}")
+            return []

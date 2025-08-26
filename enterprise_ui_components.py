@@ -200,7 +200,12 @@ class SideNavigationPanel(QWidget):
                 ("advanced_ioc", "🧬 고급 IOC 분석"),
                 ("yara_generator", "🎯 YARA 룰 생성"),
                 ("malware_analysis", "🔍 멀웨어 정적분석"),
-                ("threat_hunting", "🕵️ 위협헌팅 쿼리")
+                ("threat_hunting", "🕵️ 위협헌팅 쿼리"),
+                ("ai_threat_prediction", "🔮 AI 위협 예측"),
+                ("realtime_behavior", "📊 실시간 행위분석"),
+                ("ai_report_generator", "📋 AI 리포트 생성"),
+                ("database_optimizer", "🗃️ DB 최적화"),
+                ("memory_optimizer", "⚡ 메모리 최적화")
             ],
             "관제 고객사": [
                 ("dashboard", "📊 통합 대시보드"),

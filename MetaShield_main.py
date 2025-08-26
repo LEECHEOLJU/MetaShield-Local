@@ -16,6 +16,11 @@ from advanced_ioc_analyzer import AdvancedIOCTab
 from yara_rule_generator import YaraGeneratorTab
 from malware_static_analyzer import MalwareAnalysisTab
 from threat_hunting_query_generator import ThreatHuntingTab
+from ai_threat_predictor import ThreatPredictionTab
+from realtime_behavior_analyzer import RealtimeBehaviorTab
+from ai_report_generator import AIReportGeneratorTab
+from database_optimizer import DatabaseOptimizerTab
+from memory_optimizer import MemoryOptimizerTab
 
 
 class MainWindow(QMainWindow):
@@ -101,6 +106,13 @@ class MainWindow(QMainWindow):
         self.content_widgets["yara_generator"] = YaraGeneratorTab()
         self.content_widgets["malware_analysis"] = MalwareAnalysisTab()
         self.content_widgets["threat_hunting"] = ThreatHuntingTab()
+        
+        # 신규 AI 기능들
+        self.content_widgets["ai_threat_prediction"] = ThreatPredictionTab()
+        self.content_widgets["realtime_behavior"] = RealtimeBehaviorTab()
+        self.content_widgets["ai_report_generator"] = AIReportGeneratorTab()
+        self.content_widgets["database_optimizer"] = DatabaseOptimizerTab()
+        self.content_widgets["memory_optimizer"] = MemoryOptimizerTab()
         
         # 사용가이드 콘텐츠
         self.content_widgets["guide"] = GuideTab("", "사용자 가이드")

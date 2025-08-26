@@ -8,7 +8,15 @@
       "Bash(done)",
       "Bash(pip install:*)",
       "Bash(python:*)",
-      "Bash(git --version)"
+      "Bash(git --version)",
+      "Bash(conda install:*)",
+      "Bash(dir:*)",
+      "Read(/C:\\c/**)",
+      "Bash(\"/c/Users/cheol/AppData/Local/Programs/Python/Python313/python.exe\" --version)",
+      "Bash(\"/c/Users/cheol/AppData/Local/Programs/Python/Python313/python.exe\" -c \"import platform; print(f''Architecture: {platform.architecture()[0]}''); print(f''Machine: {platform.machine()}'')\")",
+      "Bash(\"/c/Users/cheol/AppData/Local/Programs/Python/Python313/python.exe\" -m pip install PyQt6 requests openai pandas matplotlib deep_translator)",
+      "Bash(\"/c/Users/cheol/AppData/Local/Programs/Python/Python313/python.exe\" MetaShield_main.py)",
+      "Bash(\"C:\\Users\\cheol\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\" -m pip install psutil)"
     ],
     "deny": [],
     "ask": []

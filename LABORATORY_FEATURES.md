@@ -538,6 +538,302 @@ rule Malware_sample_exe_a1b2c3d4
 ''' 🎯 기능 개요
 PE/ELF 바이너리를 정적 분석하여 위험도를 0-100점으로 평가하고, 상세한 분석 보고서를 제공하는 종합 멀웨어 분석 시스템입니다.
 
+------------------------------------
+🔍 분석 구성 요소 (5가지)
+
+  1. PE/ELF 바이너리 구조 분석
+
+  - DOS/NT 헤더 파싱
+  - 섹션 정보 분석 (권한, 크기, 엔트로피)
+  - Import/Export Table 분석
+  - 이상 징후 탐지 (비정상 섹션, 실행 가능한 데이터 섹션 등)
+
+  2. API 호출 패턴 분석
+
+  위험한 API 카테고리:
+  - process: CreateRemoteThread, WriteProcessMemory (프로세스 인젝션)
+  - injection: SetWindowsHookEx, DLLInject (코드 인젝션)
+  - anti_debug: IsDebuggerPresent (디버깅 회피)
+  - persistence: CreateService, StartService (시스템 영속성)
+  - evasion: VirtualProtect, LoadLibrary (회피 기법)
+
+  3. 엔트로피 분석
+
+  - 전체 파일 엔트로피 계산
+  - 1KB 단위 청크별 엔트로피 분석
+  - 높은 엔트로피 영역 탐지 (패킹/암호화 의심)
+
+  4. 문자열 패턴 분석
+
+  의심스러운 패턴 카테고리:
+  - malicious: backdoor, keylog, ransomware, trojan
+  - evasion: sandbox detect, vm detect, anti debug
+  - crypto: RC4, XOR key, weak encryption
+  - network: hardcoded IP:Port, .onion, C2 server
+
+  5. 파일 메타데이터 분석
+
+  - 파일 크기, 해시값
+  - 생성/수정 시간
+  - 패킹 도구 시그니처 탐지
+
+  📊 위험도 점수 계산 알고리즘
+
+  멀웨어 지표 점수 (최대 45점)
+
+  - high 심각도: 지표 1개당 20점
+  - medium 심각도: 지표 1개당 5점 (최대 15점)
+  - low 심각도: 지표 1개당 2점 (최대 10점)
+
+  엔트로피 점수 (최대 25점)
+
+  - 7.8 이상: 25점 (매우 높은 엔트로피 - 강력한 패킹/암호화)
+  - 7.5~7.8: 15점 (높은 엔트로피)
+  - 7.2~7.5: 5점 (중간 엔트로피)
+
+  의심스러운 문자열 점수 (최대 23점)
+
+  - malicious 패턴: 1개당 10점
+  - evasion 패턴: 1개당 8점
+  - crypto 패턴: 1개당 2점 (최대 8점)
+  - network 패턴: 1개당 1점 (최대 5점)
+
+  PE 이상 징후 점수 (최대 ?점)
+
+  - 실제 위험한 징후만: 1개당 5점
+  - "패킹", "높은 엔트로피", "실행 가능한 데이터" 포함 시만
+
+  파일 크기 보정 (5점)
+
+  - 10KB 미만 파일: +5점 (의심스러운 소형 파일)
+
+  🎯 위험도 레벨 판정
+
+  📊 총점 계산 → 최종 위험도 레벨
+  - 80점 이상: 🔴 높음 (매우 위험)
+  - 60-79점: 🟡 중간 (위험)
+  - 40-59점: 🟠 낮음 (주의)
+  - 39점 이하: 🟢 매우 낮음 (안전)
+
+  💡 특징
+
+  1. 정상 파일 친화적: 일반적인 Windows API는 제외
+  2. 다층 검증: 여러 분석 기법의 교차 검증
+  3. 가중치 적용: 실제 위험도에 따른 차등 점수
+  4. 임계값 조정: 과탐(False Positive) 최소화
+
+  이런 로직으로 notepad.exe는 15점(매우 낮음), 실제 멀웨어는 80점 이상으로 구분됩니다!
+
+   🗂️ PE/ELF란 무엇인가?
+
+  PE (Portable Executable)
+
+  - Windows 실행파일 형식 (.exe, .dll, .sys)
+  - Windows에서 프로그램을 실행하기 위한 표준 파일 형식
+
+  ELF (Executable and Linkable Format)
+
+  - Linux/Unix 실행파일 형식
+  - Linux에서 프로그램을 실행하기 위한 표준 파일 형식
+
+  📂 실행파일의 내부 구조 (PE 기준)
+
+  실행파일을 열면 바이너리 데이터가 특정 구조로 구성되어 있습니다:
+
+  ┌─────────────────┐
+  │   DOS 헤더       │  ← 옛날 DOS 호환성용 (16비트 시대)
+  ├─────────────────┤
+  │   DOS Stub      │  ← "This program cannot be run in DOS mode"
+  ├─────────────────┤
+  │   NT 헤더       │  ← 진짜 Windows 실행파일 정보
+  ├─────────────────┤
+  │  섹션 헤더들     │  ← 코드, 데이터 영역 정보
+  ├─────────────────┤
+  │   .text 섹션    │  ← 실제 프로그램 코드
+  ├─────────────────┤
+  │   .data 섹션    │  ← 전역 변수, 상수
+  ├─────────────────┤
+  │   .rsrc 섹션    │  ← 리소스 (아이콘, 문자열 등)
+  └─────────────────┘
+
+  🔍 헤더 파싱이란?
+
+  DOS 헤더 (64바이트)
+
+  # 파일 시작 부분을 읽음
+  with open('notepad.exe', 'rb') as f:
+      data = f.read(64)  # 처음 64바이트
+
+  signature = data[0:2]  # "MZ" (0x4D5A)
+  pe_offset = data[60:64]  # NT 헤더가 있는 위치
+
+  NT 헤더
+
+  # DOS 헤더에서 알아낸 위치로 이동
+  pe_start = struct.unpack('<L', pe_offset)[0]
+  nt_header = data[pe_start:pe_start+4]  # "PE\0\0"
+
+  # 아키텍처 정보
+  machine = data[pe_start+4:pe_start+6]  # x86? x64?
+  section_count = data[pe_start+6:pe_start+8]  # 섹션 몇 개?
+
+  📋 헤더에서 알 수 있는 정보
+
+  1. 기본 정보
+
+  - 아키텍처: x86(32비트) vs x64(64비트)
+  - 파일 타입: 실행파일(.exe) vs 라이브러리(.dll)
+  - 섹션 개수: 코드, 데이터 영역이 몇 개?
+
+  2. 섹션 정보
+
+  섹션 분석 예시:
+  .text → 크기: 50KB, 권한: 읽기+실행 (코드)
+  .data → 크기: 10KB, 권한: 읽기+쓰기 (변수)
+  .rsrc → 크기: 5KB, 권한: 읽기 (리소스)
+
+  3. Import Table (사용하는 API들)
+
+  notepad.exe가 사용하는 Windows API:
+  - kernel32.dll: CreateFileW, ReadFile, WriteFile
+  - user32.dll: CreateWindowW, ShowWindow
+  - gdi32.dll: TextOutW, SetTextColor
+
+  🚨 왜 멀웨어 분석에 중요한가?
+
+  정상적인 실행파일
+
+  ✅ 섹션 구조가 일반적 (.text, .data, .rsrc)
+  ✅ 엔트로피가 보통 (6-7)
+  ✅ 일반적인 Windows API 사용
+  ✅ 디지털 서명 존재
+
+  의심스러운 실행파일
+
+  🚨 이상한 섹션명 (.hack, .evil)
+  🚨 높은 엔트로피 (7.5+) → 패킹/암호화
+  🚨 위험한 API (WriteProcessMemory, CreateRemoteThread)
+  🚨 비정상적인 섹션 권한 (데이터 영역이 실행 가능)
+
+  💻 실제 분석 과정
+
+  # 1단계: 파일 형식 확인
+  if file_data[0:2] == b'MZ':
+      print("Windows PE 파일입니다")
+  elif file_data[0:4] == b'\x7fELF':
+      print("Linux ELF 파일입니다")
+
+  # 2단계: 헤더 파싱
+  pe_offset = struct.unpack('<L', file_data[60:64])[0]
+  pe_signature = file_data[pe_offset:pe_offset+4]
+
+  # 3단계: 섹션 분석
+  for section in sections:
+      entropy = calculate_entropy(section_data)
+      if entropy > 7.5:
+          print(f"⚠️ 높은 엔트로피 섹션: {section.name}")
+
+  이런 방식으로 실행파일의 "DNA"를 분석해서 정상인지 의심스러운지 판단하는 거예요!
+
+
+   🎲 엔트로피란?
+
+  정보 이론에서 나온 개념으로, 데이터가 얼마나 예측 불가능한지를 0~8 사이 값으로 나타냅니다.
+
+  📊 엔트로피 스케일:
+  0.0 ────────────────────────── 8.0
+  완전 규칙적              완전 무작위
+  (예측 가능)              (예측 불가능)
+
+  📈 엔트로피 예시
+
+  낮은 엔트로피 (0-3점)
+
+  "AAAAAAAAAAA"           # 엔트로피 ≈ 0.0
+  "ABABABABAB"            # 엔트로피 ≈ 1.0
+  "Hello World"           # 엔트로피 ≈ 3.5
+
+  중간 엔트로피 (4-6점)
+
+  "일반적인 프로그램 코드"      # 엔트로피 ≈ 4-6
+  "mov eax, ebx\npush ecx"   # 어셈블리 코드
+
+  높은 엔트로피 (7-8점)
+
+  "XJ#$9K@mQ!zR&vW8..."     # 엔트로피 ≈ 7.5+
+  암호화된 데이터 또는 압축된 데이터
+
+  🔢 엔트로피 계산 방법
+
+  def calculate_entropy(data):
+      # 1. 각 바이트(0-255)의 빈도 계산
+      byte_counts = [0] * 256
+      for byte in data:
+          byte_counts[byte] += 1
+
+      # 2. 확률 계산 후 엔트로피 공식 적용
+      entropy = 0.0
+      data_len = len(data)
+
+      for count in byte_counts:
+          if count > 0:
+              probability = count / data_len
+              entropy -= probability * math.log2(probability)
+
+      return entropy
+
+  🦠 멀웨어 분석에서 엔트로피의 의미
+
+  정상 파일의 엔트로피
+
+  📄 텍스트 파일: 4-5점 (자연어의 패턴)
+  💻 실행파일: 5-7점 (코드 + 데이터)
+  🎵 미디어 파일: 7-8점 (압축된 데이터)
+
+  의심스러운 높은 엔트로피 (7.5+)
+
+  🔒 암호화된 페이로드
+  📦 패킹된 멀웨어 (UPX, Themida 등)
+  🗜️ 압축된 악성코드
+  🎭 난독화된 스크립트
+
+  ⚠️ MetaShield의 엔트로피 임계값
+
+  if entropy > 7.8:     # 25점 - 매우 의심
+      "강력한 패킹/암호화 의심"
+  elif entropy > 7.5:   # 15점 - 의심
+      "패킹된 파일 가능성"
+  elif entropy > 7.2:   # 5점 - 주의
+      "약간 높음"
+  else:                 # 0점 - 정상
+      "정상 범위"
+
+  🔍 실제 예시
+
+  notepad.exe (엔트로피: 6.476)
+
+  정상적인 Windows 실행파일
+  - 어셈블리 코드 (중간 엔트로피)
+  - 문자열 데이터 (낮은 엔트로피)
+  - 리소스 데이터 (중간 엔트로피)
+  → 전체적으로 6.5 정도
+
+  패킹된 멀웨어 (엔트로피: 7.8+)
+
+  UPX로 압축된 악성코드
+  - 대부분이 압축 데이터 (높은 엔트로피)
+  - 복호화 루틴만 일반 코드 (낮은 엔트로피)
+  → 전체적으로 7.8+
+
+  💡 왜 엔트로피가 중요한가?
+
+  1. 패킹 탐지: 멀웨어는 탐지를 피하려고 압축/암호화
+  2. 난독화 탐지: 코드를 알아보기 어렵게 만듦
+  3. 페이로드 은닉: 실제 악성 기능을 숨김
+
+  높은 엔트로피 = 뭔가 숨기려는 의도가 있을 가능성! 🕵️‍♂️
+
+  --------------------
 ''' 🏗️ 위험도 평가 알고리즘
 
 ''''   1. 점수 산정 체계 (총 100점)  
@@ -1631,3 +1927,318 @@ if malware_analysis['final_score'] > 70:
   상태  : ✅ 기능 완성, ⚠️ UI 최적화 필요
 
 > 이 문서는 MetaShield AI 실험실의 4가지 핵심 기능에 대한 완전한 기술 분석서입니다. 각 기능의 코드 소스, 구현 로직, 기대 결과를 상세히 기록하여 향후 유지보수 및 기능 확장을 위한 참고 자료로 활용할 수 있습니다.
+
+
+---
+ 🎯 실제 보안관제 업무 시나리오
+
+  📋 시나리오 1: 의심스러운 파일 다운로드 탐지
+
+  SIEM 알람: "suspicious_file_download.exe detected"
+  JIRA 티켓: #SEC-2024-1203
+  Payload: http://malicious-domain.com/backdoor.exe
+
+  MetaShield 활용 워크플로우:
+  1. 🤖 AI 분석 탭: Payload URL 입력 → 즉시 위험도 분석
+  2. 🔍 CVE 검색: 연관된 취약점 확인
+  3. 🎯 위협헌팅: IOC(URL) 기반 추가 Sentinel 쿼리 생성
+  4. 📊 종합 리포트: 고객사 전달용 분석 보고서 자동 생성
+
+  결과: 기존 30분 분석 → 5분으로 단축, 더 정확한 분석
+
+  ---
+  📋 시나리오 2: 랜섬웨어 감염 의심
+
+  SIEM 알람: "Multiple file encryption detected"
+  JIRA 티켓: #SEC-2024-1204
+  Payload: C:\temp\encrypt.exe (SHA256: abc123...)
+
+  MetaShield 활용 워크플로우:
+  1. 🦠 멀웨어 정적분석: encrypt.exe 파일 업로드 분석
+    - 엔트로피 분석으로 패킹 여부 확인
+    - PE 구조 분석으로 의심스러운 API 호출 탐지
+  2. 🔍 CVE 검색: 해당 랜섬웨어 변종 CVE 확인
+  3. 🤖 AI 분석: "랜섬웨어 감염 의심, 파일 해시: abc123..." 입력
+  4. 📊 종합 분석: 고객사에 즉시 차단 권고
+
+  결과: 랜섬웨어 확산 전 빠른 대응 가능
+
+  ---
+  📋 시나리오 3: APT 그룹 C2 통신 탐지
+
+  SIEM 알람: "Suspicious outbound connection"
+  JIRA 티켓: #SEC-2024-1205
+  Payload: 192.168.1.50 → 45.123.45.67:443 (지속적 통신)
+
+  MetaShield 활용 워크플로우:
+  1. 🎯 위협헌팅:
+    - IOC(IP: 45.123.45.67) 입력
+    - AI 추천으로 고급 Sentinel 쿼리 생성
+    - 과거 7일간 해당 IP 관련 모든 활동 추적
+  2. 🤖 AI 분석: "지속적 외부 통신, C2 서버 의심" 분석
+  3. 🔍 위협인텔: IP 평판 조회 및 APT 그룹 연관성 확인
+
+  결과: APT 공격 전체 킬체인 파악, 정교한 대응 방안 수립
+
+  ---
+  📋 시나리오 4: 내부 계정 탈취 의심
+
+  SIEM 알람: "Abnormal login behavior detected"
+  JIRA 티켓: #SEC-2024-1206
+  Payload: admin@company.com 계정이 3개국에서 동시 로그인
+
+  MetaShield 활용 워크플로우:
+  1. 🎯 위협헌팅:
+    - IOC(이메일: admin@company.com) 입력
+    - Sentinel AI 쿼리로 모든 로그인 패턴 분석
+    - 시간대별, 지역별 로그인 이상 패턴 시각화
+  2. 🤖 AI 분석: 계정 탈취 시나리오 분석 및 대응 권고
+  3. 📊 종합 리포트: 임시 계정 차단 근거 자료 제공
+
+  ---
+  ⚡ 관제 업무 효율성 개선
+
+  Before (기존 방식)
+
+  1. SIEM 알람 확인 (5분)
+  2. 구글링 + VirusTotal 수동 조회 (15분)
+  3. 간단한 분석 리포트 작성 (10분)
+  4. 고객사 티켓 전달 (5분)
+  → 총 35분 소요
+
+  After (MetaShield 활용)
+
+  1. SIEM 알람 확인 (2분)
+  2. MetaShield AI 분석 + 자동 리포트 (3분)
+  3. 필요시 추가 헌팅 쿼리 실행 (5분)
+  4. 완성된 분석 리포트 고객 전달 (2분)
+  → 총 12분 소요 (65% 단축)
+
+  🎯 실무 핵심 가치
+
+  1. ⚡ 분석 속도 향상: AI 기반 즉시 분석
+  2. 🎯 정확도 증대: 다층 분석으로 오탐 감소
+  3. 📊 보고서 품질: 전문적이고 상세한 분석 리포트
+  4. 🔍 심화 분석: 단순 차단을 넘어선 위협헌팅
+  5. 🤖 업무 자동화: 반복 작업의 지능형 처리
+
+  ● YARA 룰은 보안관제센터(SOC)에서 다음과 같이 활용할 수 있습니다:
+
+  실시간 탐지 및 대응
+
+  - 엔드포인트 스캐닝: EDR 솔루션과 연동하여 실시간으로 파일 시스템을 스캔
+  - 메모리 분석: 실행 중인 프로세스 메모리에서 악성코드 패턴 탐지
+  - 네트워크 페이로드: 네트워크 트래픽에서 악성 페이로드 식별
+
+  위협 헌팅 자동화
+
+  - IOC 기반 헌팅: 알려진 위협의 signature를 YARA로 변환하여 사냥
+  - APT 그룹 추적: 특정 APT 그룹의 TTP(전술, 기법, 절차)를 룰로 정의
+  - 제로데이 탐지: 행위 기반 패턴으로 미지의 위협 식별
+
+  사고 대응 지원
+
+  - 포렌식 분석: 침해 사고 시 관련 아티팩트 자동 식별
+  - 영향 범위 분석: 동일한 위협이 다른 시스템에 존재하는지 확인
+  - 타임라인 구성: 공격자의 활동 흔적을 시간순으로 추적
+
+  예방적 보안 강화
+
+  - 화이트리스트 검증: 허용된 소프트웨어가 변조되지 않았는지 확인
+  - 정책 준수: 조직의 보안 정책을 YARA 룰로 자동화
+  - 취약점 스캐닝: 알려진 취약점 패턴을 사전에 탐지
+
+  ---
+  ● Update Todos
+  ⎿  [ ] 코드 최적화 및 신규 AI 기능 추가 작업 계획
+     [ ] 기존 코드 성능 최적화 분석
+     [ ] AI 기반 위협 예측 기능 추가
+     [ ] 실시간 악성코드 행위 분석 기능 구현
+     [ ] AI 보안 리포트 자동 생성 기능 추가
+     [ ] 데이터베이스 쿼리 최적화
+     [ ] 메모리 사용량 최적화
+
+● Read(MetaShield_main.py)
+  ⎿  Read 100 lines (ctrl+r to expand)
+
+● Update Todos
+  ⎿  [×] 코드 최적화 및 신규 AI 기능 추가 작업 계획
+     [ ] 기존 코드 성능 최적화 분석
+     [ ] AI 기반 위협 예측 기능 추가
+     [ ] 실시간 악성코드 행위 분석 기능 구현
+     [ ] AI 보안 리포트 자동 생성 기능 추가
+     [ ] 데이터베이스 쿼리 최적화
+     [ ] 메모리 사용량 최적화
+
+● Search(pattern: "import|from.*import", glob: "*.py")
+  ⎿  Found 15 files (ctrl+r to expand)
+
+● Write(ai_threat_predictor.py)
+  ⎿  Wrote 1 lines to ai_threat_predictor.py
+     # ai_threat_predictor.py - AI 기반 위협 예측 시스템
+     """
+     AI 기반 실시간 위협 예측 및 분석 시스템
+     """
+     import json
+     import time
+     import threading
+     from datetime import datetime, timedelta
+     from typing import Dict, List, Optional, Tuple
+
+● Update Todos
+  ⎿  [×] 기존 코드 성능 최적화 분석
+     [×] AI 기반 위협 예측 기능 추가
+     [ ] 실시간 악성코드 행위 분석 기능 구현
+     [ ] AI 보안 리포트 자동 생성 기능 추가
+     [ ] 데이터베이스 쿼리 최적화
+     [ ] 메모리 사용량 최적화
+
+● Write(realtime_behavior_analyzer.py)
+  ⎿  Wrote 1 lines to realtime_behavior_analyzer.py
+     # realtime_behavior_analyzer.py - 실시간 악성코드 행위 분석 시스템
+     """
+     실시간으로 시스템 행위를 모니터링하여 악성코드 활동을 탐지하고 분석하는 시스템
+     """
+     import os
+     import time
+     import json
+     import threading
+     import subprocess
+
+● Update Todos
+  ⎿  [×] 실시간 악성코드 행위 분석 기능 구현
+     [ ] AI 보안 리포트 자동 생성 기능 추가
+     [ ] 데이터베이스 쿼리 최적화
+     [ ] 메모리 사용량 최적화
+
+● Write(ai_report_generator.py)
+  ⎿  Wrote 1 lines to ai_report_generator.py
+     # ai_report_generator.py - AI 기반 자동 보안 리포트 생성 시스템
+     """
+     다양한 보안 데이터를 종합하여 AI가 자동으로 전문적인 보안 리포트를 생성하는 시스템
+     """
+     import os
+     import json
+     import time
+     import threading
+     from datetime import datetime, timedelta
+
+● Update Todos
+  ⎿  [×] AI 보안 리포트 자동 생성 기능 추가
+     [ ] 데이터베이스 쿼리 최적화
+     [ ] 메모리 사용량 최적화
+
+● Read(nvd_cve_checker_Pro.py)
+  ⎿  Read 50 lines (ctrl+r to expand)
+
+● Write(database_optimizer.py)
+  ⎿  Wrote 1 lines to database_optimizer.py
+     # database_optimizer.py - 데이터베이스 성능 최적화 시스템
+     """
+     MetaShield의 모든 데이터베이스 성능을 최적화하는 시스템
+     """
+     import os
+     import time
+     import sqlite3
+     import threading
+     from datetime import datetime, timedelta
+
+● Update Todos
+  ⎿  [×] 데이터베이스 쿼리 최적화
+     [ ] 메모리 사용량 최적화
+
+● Read(MetaShield_main.py)
+  ⎿  Read 200 lines (ctrl+r to expand)
+
+● Write(memory_optimizer.py)
+  ⎿  Wrote 1 lines to memory_optimizer.py
+     # memory_optimizer.py - 메모리 사용량 최적화 시스템
+     """
+     MetaShield 애플리케이션의 메모리 사용량을 모니터링하고 최적화하는 시스템
+     """
+     import gc
+     import sys
+     import time
+     import psutil
+     import threading
+
+● Update Todos
+  ⎿  [×] 메모리 사용량 최적화
+     [ ] 메인 애플리케이션에 신규 기능들 통합
+
+● Read(MetaShield_main.py)
+  ⎿  Read 150 lines (ctrl+r to expand)
+
+● Update(MetaShield_main.py)
+  ⎿  Updated MetaShield_main.py with 12 additions
+       16    from yara_rule_generator import YaraGeneratorTab
+       17    from malware_static_analyzer import MalwareAnalysisTab
+       18    from threat_hunting_query_generator import ThreatHuntingTab
+       19 +  from ai_threat_predictor import ThreatPredictionTab
+       20 +  from realtime_behavior_analyzer import RealtimeBehaviorTab
+       21 +  from ai_report_generator import AIReportGeneratorTab
+       22 +  from database_optimizer import DatabaseOptimizerTab
+       23 +  from memory_optimizer import MemoryOptimizerTab
+       24
+       25
+       26    class MainWindow(QMainWindow):
+     ...
+       102            self.content_widgets["malware_analysis"] = MalwareAnalysisTab()
+       103            self.content_widgets["threat_hunting"] = ThreatHuntingTab()
+       104
+       105 +          # 신규 AI 기능들
+       106 +          self.content_widgets["ai_threat_prediction"] = ThreatPredictionTab()
+       107 +          self.content_widgets["realtime_behavior"] = RealtimeBehaviorTab()
+       108 +          self.content_widgets["ai_report_generator"] = AIReportGeneratorTab()
+       109 +          self.content_widgets["database_optimizer"] = DatabaseOptimizerTab()
+       110 +          self.content_widgets["memory_optimizer"] = MemoryOptimizerTab()
+       111 +
+       112            # 사용가이드 콘텐츠
+       113            self.content_widgets["guide"] = GuideTab("", "사용자 가이드")
+       114
+
+● Read(enterprise_ui_components.py)
+  ⎿  Read 100 lines (ctrl+r to expand)
+
+● Search(pattern: "sub_tabs.*=.*{", glob: "enterprise_ui_components.py", output_mode: "content")
+  ⎿  Found 0 lines
+
+● Read(enterprise_ui_components.py)
+  ⎿  Read 100 lines (ctrl+r to expand)
+
+● Update(enterprise_ui_components.py)
+  ⎿  Updated enterprise_ui_components.py with 6 additions and 1 removal
+       200                    ("advanced_ioc", "🧬 고급 IOC 분석"),
+       201                    ("yara_generator", "🎯 YARA 룰 생성"),
+       202                    ("malware_analysis", "🔍 멀웨어 정적분석"),
+       203 -                  ("threat_hunting", "🕵️ 위협헌팅 쿼리")
+       203 +                  ("threat_hunting", "🕵️ 위협헌팅 쿼리"),
+       204 +                  ("ai_threat_prediction", "🔮 AI 위협 예측"),
+       205 +                  ("realtime_behavior", "📊 실시간 행위분석"),
+       206 +                  ("ai_report_generator", "📋 AI 리포트 생성"),
+       207 +                  ("database_optimizer", "🗃️ DB 최적화"),
+       208 +                  ("memory_optimizer", "⚡ 메모리 최적화")
+       209                ],
+       210                "관제 고객사": [
+       211                    ("dashboard", "📊 통합 대시보드"),
+
+● Update Todos
+  ⎿  [×] 메인 애플리케이션에 신규 기능들 통합
+     [ ] 최종 테스트 및 에러 수정
+
+● Bash("C:\Users\cheol\AppData\Local\Programs\Python\Python313\python.exe" MetaShield_main.py)
+  ⎿  Error: Traceback (most recent call last):
+       File "C:\Users\cheol\Desktop\���α׷�
+     ����\MetaShield_local\MetaShield_local_git\MetaShield-Local\MetaShield_main.py", line 20, in <module>
+         from realtime_behavior_analyzer import RealtimeBehaviorTab
+       File "C:\Users\cheol\Desktop\���α׷�
+     ����\MetaShield_local\MetaShield_local_git\MetaShield-Local\realtime_behavior_analyzer.py", line 17, in
+     <module>
+         import psutil
+     ModuleNotFoundError: No module named 'psutil'
+
+● Bash("C:\Users\cheol\AppData\Local\Programs\Python\Python313\python.exe" -m pip install psutil)
+  ⎿  Collecting psutil
+       Downloading psutil-7.0.0-cp37-abi3-win_amd64.whl.metadata (23 kB)
+     Downloading psutil-7.0.0-cp37-abi3-win_amd64.whl (244 kB)
+     ---
