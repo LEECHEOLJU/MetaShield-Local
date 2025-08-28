@@ -25,11 +25,18 @@
 -  검색 및 필터링 : 패턴명, 내용 기반 검색 및 즐겨찾기 관리
 -  패턴 효율성 분석 : 기존 패턴의 탐지 성능 및 개선사항 분석
 
- ' ' ' 🧪 AI 실험실 (신규)
+ ' ' ' 🧪 AI 실험실 (13개 기능 완성)
+
+**🔬 기존 실험실 기능**
 -  고급 IOC 분석기 : AI와 정규식을 결합한 하이브리드 IOC 추출 (95% 정확도)
--  YARA 룰 생성기 : 악성코드 샘플 기반 자동 YARA 탐지 룰 생성
+-  YARA 룰 생성기 : 악성코드 샘플 기반 자동 YARA 탐지 룰 생성 + 실제 파일 테스트
 -  멀웨어 정적 분석 : PE/ELF 바이너리 분석 및 위험도 평가 (0-100점)
--  위협 헌팅 쿼리 생성 : Splunk, ELK, Sigma 플랫폼용 쿼리 자동 생성
+-  위협 헌팅 쿼리 생성 : Splunk, ELK, Sigma, Sentinel KQL 쿼리 자동 생성
+
+**🚀 신규 AI 실험실 기능**
+-  📖 AI 실시간 로그 스토리텔링 : 보안 로그를 이해하기 쉬운 스토리로 변환
+-  📝 AI 자연어 보안정책 생성기 : 자연어 요구사항을 체계적인 보안정책으로 변환
+-  🎯 AI 보안 시나리오 시뮬레이터 : 가상 보안 시나리오 시뮬레이션 및 대응 훈련
 
  ' ' 🚀 설치 및 실행
 
@@ -45,7 +52,7 @@ git clone https://github.com/YOUR_USERNAME/MetaShield_Local.git
 cd MetaShield
 
  ' 의존성 설치
-pip install PyQt6 requests pandas openai matplotlib deep_translator python-dotenv
+pip install PyQt6 requests pandas openai matplotlib deep_translator python-dotenv psutil
 
  ' 프로그램 실행
 python MetaShield_main.py
@@ -79,6 +86,9 @@ MetaShield/
 ├── yara_rule_generator.py           ' YARA 룰 생성기 (AI 실험실)
 ├── malware_static_analyzer.py       ' 멀웨어 정적 분석 (AI 실험실)
 ├── threat_hunting_query_generator.py  ' 위협 헌팅 쿼리 생성 (AI 실험실)
+├── ai_log_storyteller.py           ' AI 로그 스토리텔링 (신규)
+├── ai_policy_generator.py          ' AI 보안정책 생성기 (신규)
+├── ai_security_simulator.py        ' AI 보안 시나리오 시뮬레이터 (신규)
 ├── cve_cache_3_1.db                ' CVE 데이터 캐시
 └── pattern_dict.db                 ' 패턴 분석 데이터베이스
 ```
@@ -114,7 +124,7 @@ JIRA_API_TOKEN=your_jira_api_token_here
 
  이철주 선임  - 보안 분석 전문가
 - 개발 기간: 2025년 8월
-- 버전: v2.0.0
+- 버전: v2.1.0 (AI 실험실 11개 기능 완성)
 
  ' ' 📄 라이선스
 

@@ -59,6 +59,10 @@ class Card(QFrame):
     def add_layout(self, layout):
         """Add a layout to the card"""
         self.main_layout.addLayout(layout)
+        
+    def layout(self):
+        """Return the main layout for backwards compatibility"""
+        return self.main_layout
 
 class PrimaryButton(QPushButton):
     """Primary action button with modern styling"""

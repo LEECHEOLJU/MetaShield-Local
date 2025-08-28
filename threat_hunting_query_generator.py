@@ -1159,13 +1159,149 @@ class ThreatHuntingTab(QWidget):
         self.results_tabs.setCurrentIndex(0)
     
     def _generate_ai_queries_sync(self, ioc):
-        """동기식 AI 쿼리 생성 (간소화 버전)"""
+        """동기식 AI 쿼리 생성 (AI 호출 버전)"""
         try:
-            # 간단한 AI 기반 쿼리 생성 시뮬레이션
-            queries = []
+            # AI 설정 확인
+            if not self.ai_config or not self.ai_config.is_valid():
+                # AI 설정이 없으면 템플릿 기반 쿼리 생성
+                return self._generate_template_queries(ioc)
             
-            # IOC 타입별 기본 AI 추천 쿼리 템플릿
-            ai_templates = {
+            # Azure OpenAI API 호출
+            from openai import AzureOpenAI
+            
+            client = AzureOpenAI(
+                api_key=self.ai_config.api_key,
+                api_version=self.ai_config.api_version,
+                azure_endpoint=self.ai_config.endpoint
+            )
+            
+            # AI 프롬프트 구성
+            prompt = f"""당신은 위협 헌팅 전문가입니다. 다음 IOC에 대한 효과적인 헌팅 쿼리를 생성해주세요.
+
+IOC 정보:
+- 타입: {ioc.ioc_type}
+- 값: {ioc.ioc_value}
+- 설명: {ioc.description}
+- 신뢰도: {ioc.confidence}
+
+다음 형식으로 3개 플랫폼의 쿼리를 생성해주세요:
+
+=== SENTINEL ===
+제목: [쿼리 제목]
+설명: [쿼리 설명]
+쿼리:
+[KQL 쿼리]
+
+=== SPLUNK ===
+제목: [쿼리 제목]
+설명: [쿼리 설명]
+쿼리:
+[SPL 쿼리]
+
+=== ELASTICSEARCH ===
+제목: [쿼리 제목]
+설명: [쿼리 설명]
+쿼리:
+[DSL 쿼리]
+
+실용적이고 효과적인 쿼리로 작성해주세요."""
+
+            try:
+                # AI API 호출
+                response = client.chat.completions.create(
+                    model=self.ai_config.deployment,
+                    messages=[
+                        {"role": "system", "content": "당신은 사이버 보안 위협 헌팅 전문가입니다. 실용적이고 효과적인 헌팅 쿼리를 생성해주세요."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=3000
+                )
+                
+                ai_response = response.choices[0].message.content
+                
+                # AI 응답 파싱
+                queries = self._parse_ai_response_to_queries_enhanced(ai_response, ioc)
+                
+                if queries:
+                    return queries
+                else:
+                    # AI 파싱 실패시 템플릿 사용
+                    return self._generate_template_queries(ioc)
+                    
+            except Exception as ai_error:
+                print(f"AI 쿼리 생성 오류: {str(ai_error)}")
+                # AI 호출 실패시 템플릿 사용
+                return self._generate_template_queries(ioc)
+            
+        except Exception as e:
+            print(f"쿼리 생성 오류: {str(e)}")
+            return []
+    
+    def _parse_ai_response_to_queries_enhanced(self, ai_response: str, ioc):
+        """향상된 AI 응답 파싱"""
+        queries = []
+        
+        try:
+            # 플랫폼별 섹션 분리
+            sections = ai_response.split('=== ')
+            
+            for section in sections[1:]:  # 첫 번째는 빈 섹션
+                lines = section.strip().split('\n')
+                if len(lines) < 4:
+                    continue
+                
+                platform = lines[0].replace(' ===', '').strip().lower()
+                if platform not in ['sentinel', 'splunk', 'elasticsearch']:
+                    continue
+                
+                title = ""
+                description = ""
+                query_content = ""
+                
+                i = 1
+                while i < len(lines):
+                    line = lines[i].strip()
+                    if line.startswith('제목:'):
+                        title = line.replace('제목:', '').strip()
+                    elif line.startswith('설명:'):
+                        description = line.replace('설명:', '').strip()
+                    elif line.startswith('쿼리:'):
+                        # 쿼리 내용 수집
+                        i += 1
+                        query_lines = []
+                        while i < len(lines) and not lines[i].strip().startswith('==='):
+                            query_lines.append(lines[i])
+                            i += 1
+                        query_content = '\n'.join(query_lines).strip()
+                        break
+                    i += 1
+                
+                if title and query_content:
+                    query = GeneratedQuery(
+                        title=title,
+                        platform=platform,
+                        query=query_content,
+                        description=description or f"{ioc.ioc_type} {ioc.ioc_value}에 대한 헌팅 쿼리",
+                        tags=[ioc.ioc_type.lower(), "ai-generated"],
+                        time_range="7d",
+                        confidence=0.85,
+                        mitre_techniques=[]
+                    )
+                    queries.append(query)
+            
+            return queries
+            
+        except Exception as e:
+            print(f"AI 응답 파싱 오류: {str(e)}")
+            return []
+    
+    def _generate_template_queries(self, ioc):
+        """템플릿 기반 쿼리 생성 (AI 대신 사용)"""
+        queries = []
+        
+        # IOC 타입별 기본 AI 추천 쿼리 템플릿
+        ai_templates = {
                 'IP 주소': {
                     'sentinel': f'''// AI 추천: {ioc.ioc_value} IP 주소 종합 분석
 union SecurityEvent, CommonSecurityLog, DeviceNetworkEvents, DeviceLogonEvents
@@ -1227,27 +1363,23 @@ union DnsEvents, DeviceNetworkEvents, CommonSecurityLog
 | where QueryCount > 10 or UniqueClients > 5
 | sort by TimeGenerated desc'''
                 }
-            }
-            
-            # IOC 타입에 따른 AI 쿼리 생성
-            ioc_type_key = ioc.ioc_type
-            if ioc_type_key in ai_templates:
-                for platform, template in ai_templates[ioc_type_key].items():
-                    query = GeneratedQuery(
-                        platform=platform,
-                        query_type='ai_recommended',
-                        title=f"🤖 AI 추천: {ioc_type_key} 분석 쿼리",
-                        description=f"AI가 추천하는 {ioc.ioc_value}에 대한 고급 헌팅 쿼리",
-                        query=template,
-                        time_range='7d',
-                        confidence='high',
-                        references=[],
-                        tags=['ai_generated', 'advanced_hunting', f'ioc_{ioc_type_key}']
-                    )
-                    queries.append(query)
-            
-            return queries
-            
-        except Exception as e:
-            print(f"AI 쿼리 생성 오류: {str(e)}")
-            return []
+        }
+        
+        # IOC 타입에 따른 AI 쿼리 생성
+        ioc_type_key = ioc.ioc_type
+        if ioc_type_key in ai_templates:
+            for platform, template in ai_templates[ioc_type_key].items():
+                query = GeneratedQuery(
+                    platform=platform,
+                    query_type='ai_recommended',
+                    title=f"🤖 AI 추천: {ioc_type_key} 분석 쿼리",
+                    description=f"AI가 추천하는 {ioc.ioc_value}에 대한 고급 헌팅 쿼리",
+                    query=template,
+                    time_range='7d',
+                    confidence='high',
+                    references=[],
+                    tags=['ai_generated', 'advanced_hunting', f'ioc_{ioc_type_key}']
+                )
+                queries.append(query)
+        
+        return queries

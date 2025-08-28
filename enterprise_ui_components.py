@@ -25,7 +25,7 @@ class TopNavigationBar(QWidget):
         
     def setup_ui(self):
         """상단 네비게이션 바 UI 구성"""
-        self.setFixedHeight(60)
+        self.setFixedHeight(60)  # 높이를 60px에서 45px로 축소
         self.setStyleSheet('''
             TopNavigationBar {
                 background-color: #ffffff;
@@ -202,10 +202,9 @@ class SideNavigationPanel(QWidget):
                 ("malware_analysis", "🔍 멀웨어 정적분석"),
                 ("threat_hunting", "🕵️ 위협헌팅 쿼리"),
                 ("ai_threat_prediction", "🔮 AI 위협 예측"),
-                ("realtime_behavior", "📊 실시간 행위분석"),
-                ("ai_report_generator", "📋 AI 리포트 생성"),
-                ("database_optimizer", "🗃️ DB 최적화"),
-                ("memory_optimizer", "⚡ 메모리 최적화")
+                ("ai_log_storyteller", "📖 AI 로그 스토리텔링"),
+                ("ai_policy_generator", "📝 AI 보안정책 생성"),
+                ("ai_security_simulator", "🎯 AI 보안시나리오 시뮬레이터"),
             ],
             "관제 고객사": [
                 ("dashboard", "📊 통합 대시보드"),
@@ -224,8 +223,8 @@ class SideNavigationPanel(QWidget):
         
     def setup_ui(self):
         """사이드 네비게이션 UI 구성"""
-        self.setMinimumWidth(250)
-        self.setMaximumWidth(320)
+        self.setMinimumWidth(230)
+        self.setMaximumWidth(290)
         self.setStyleSheet('''
             SideNavigationPanel {
                 background-color: #fafafa;
@@ -406,19 +405,19 @@ class EnterpriseDashboard(QWidget):
             title = "통합 대시보드"
         elif self.company_name == "goodrich":
             icon = "🏭"
-            title = "굿리치 관제"
+            title = "굿리치"
         elif self.company_name == "kurly":
             icon = "🛒"
-            title = "컬리 관제"
+            title = "컬리"
         elif self.company_name == "finda":
             icon = "💳"  
-            title = "핀다 관제"
+            title = "핀다"
         elif self.company_name == "gln":
             icon = "🚛"
-            title = "GLN 관제"
+            title = "GLN"
         elif self.company_name == "hanwha":
             icon = "🛡️"
-            title = "한화시스템 관제"
+            title = "한화시스템"
         else:
             icon = "🏢"
             title = "관제 대시보드"

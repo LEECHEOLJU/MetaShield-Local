@@ -1121,12 +1121,160 @@ class YaraGeneratorTab(QWidget):
     
     def test_rule(self):
         """YARA 룰 테스트"""
-        QMessageBox.information(
-            self, 
-            "개발 예정", 
-            "YARA 룰 테스트 기능은 추후 버전에서 구현될 예정입니다.\n\n"
-            "현재는 생성된 룰을 저장한 후 별도 YARA 엔진으로 테스트해주세요."
+        if not hasattr(self, 'current_rule') or not self.current_rule:
+            QMessageBox.warning(self, "룰 없음", "테스트할 YARA 룰이 없습니다.")
+            return
+        
+        # 테스트 파일 선택
+        test_files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "테스트할 파일 선택",
+            "",
+            "All Files (*.*)"
         )
+        
+        if not test_files:
+            return
+        
+        # 룰 텍스트 가져오기
+        rule_text = self.rule_text.toPlainText()
+        if not rule_text.strip():
+            QMessageBox.warning(self, "룰 없음", "테스트할 룰 내용이 없습니다.")
+            return
+        
+        # 진행 다이얼로그
+        progress = QProgressDialog("YARA 룰 테스트 중...", "취소", 0, len(test_files), self)
+        progress.setWindowTitle("YARA 룰 테스트")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.show()
+        
+        try:
+            # 테스트 결과를 저장할 리스트
+            test_results = []
+            
+            for i, test_file in enumerate(test_files):
+                if progress.wasCanceled():
+                    break
+                
+                progress.setLabelText(f"테스트 중: {os.path.basename(test_file)}")
+                progress.setValue(i)
+                QApplication.processEvents()
+                
+                # 파일 테스트 수행
+                result = self.test_rule_on_file(rule_text, test_file)
+                test_results.append({
+                    'file': test_file,
+                    'result': result
+                })
+            
+            progress.setValue(len(test_files))
+            
+            # 결과 표시
+            self.show_test_results(test_results)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "테스트 오류", f"YARA 룰 테스트 중 오류가 발생했습니다:\n{str(e)}")
+        finally:
+            progress.close()
+    
+    def test_rule_on_file(self, rule_text, file_path):
+        """개별 파일에 대해 YARA 룰 테스트"""
+        try:
+            # 기본적인 패턴 매칭으로 룰 테스트 시뮬레이션
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            
+            # 룰에서 strings 섹션 추출
+            import re
+            strings_match = re.search(r'strings:\s*(.*?)\s*condition:', rule_text, re.DOTALL | re.IGNORECASE)
+            if not strings_match:
+                return {'matched': False, 'reason': 'No strings section found in rule'}
+            
+            strings_section = strings_match.group(1)
+            
+            # 패턴 추출
+            string_patterns = re.findall(r'\$\w+\s*=\s*["{](.*?)["}]', strings_section)
+            if not string_patterns:
+                hex_patterns = re.findall(r'\$\w+\s*=\s*\{\s*([0-9a-fA-F\s\?\[\]]+)\s*\}', strings_section)
+                if hex_patterns:
+                    # 헥스 패턴 처리
+                    for hex_pattern in hex_patterns:
+                        hex_bytes = bytes.fromhex(hex_pattern.replace('?', '00').replace('[', '').replace(']', '').replace(' ', ''))
+                        if hex_bytes in file_content:
+                            return {'matched': True, 'reason': f'Hex pattern matched: {hex_pattern[:50]}...'}
+                return {'matched': False, 'reason': 'No patterns found in strings section'}
+            
+            # 문자열 패턴 매칭
+            for pattern in string_patterns:
+                if pattern.encode() in file_content:
+                    return {'matched': True, 'reason': f'String pattern matched: {pattern[:50]}...'}
+            
+            return {'matched': False, 'reason': 'No patterns matched'}
+            
+        except Exception as e:
+            return {'matched': False, 'reason': f'Error testing file: {str(e)}'}
+    
+    def show_test_results(self, test_results):
+        """테스트 결과 표시"""
+        # 결과 다이얼로그 생성
+        dialog = QDialog(self)
+        dialog.setWindowTitle("YARA 룰 테스트 결과")
+        dialog.setMinimumSize(800, 600)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # 결과 요약
+        matched_count = sum(1 for result in test_results if result['result']['matched'])
+        total_count = len(test_results)
+        
+        summary_label = QLabel(f"테스트 결과: {matched_count}/{total_count} 파일에서 매칭")
+        summary_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #1890ff; margin-bottom: 10px;")
+        layout.addWidget(summary_label)
+        
+        # 결과 테이블
+        table = QTableWidget()
+        table.setColumnCount(4)
+        table.setHorizontalHeaderLabels(["파일명", "매칭 결과", "매칭 이유", "파일 크기"])
+        table.setRowCount(len(test_results))
+        
+        for i, result in enumerate(test_results):
+            file_path = result['file']
+            file_name = os.path.basename(file_path)
+            test_result = result['result']
+            
+            # 파일명
+            table.setItem(i, 0, QTableWidgetItem(file_name))
+            
+            # 매칭 결과
+            match_item = QTableWidgetItem("✅ 매칭" if test_result['matched'] else "❌ 미매칭")
+            match_item.setForeground(QColor("#52c41a") if test_result['matched'] else QColor("#ff4d4f"))
+            table.setItem(i, 1, match_item)
+            
+            # 매칭 이유
+            table.setItem(i, 2, QTableWidgetItem(test_result['reason']))
+            
+            # 파일 크기
+            try:
+                file_size = os.path.getsize(file_path)
+                size_str = f"{file_size:,} bytes"
+            except:
+                size_str = "Unknown"
+            table.setItem(i, 3, QTableWidgetItem(size_str))
+        
+        table.resizeColumnsToContents()
+        table.setAlternatingRowColors(True)
+        layout.addWidget(table)
+        
+        # 닫기 버튼
+        close_btn = QPushButton("닫기")
+        close_btn.clicked.connect(dialog.accept)
+        
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(close_btn)
+        layout.addLayout(button_layout)
+        
+        dialog.exec()
     
     def clear_all(self):
         """모든 내용 지우기"""

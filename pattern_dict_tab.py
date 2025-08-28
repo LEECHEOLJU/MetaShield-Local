@@ -294,7 +294,6 @@ class PatternDictTab(QWidget):
             
             # 우선 간단한 JQL로 시도
             jql = simple_jql
-            print(f"[JIRA DEBUG] 먼저 간단한 JQL로 시도: {jql}")
             
             progress.setLabelText("티켓 검색 중...")
             progress.setValue(30)
@@ -308,7 +307,6 @@ class PatternDictTab(QWidget):
             # JQL 디버깅을 위해 출력
             progress.setLabelText(f"JQL 쿼리: {jql[:100]}...")
             QApplication.processEvents()
-            print(f"[JIRA DEBUG] 검색 조건:")
             print(f"  - 기간: {start} ~ {end}")
             print(f"  - JQL: {jql}")
             print(f"  - URL: {search_url}")
@@ -326,29 +324,24 @@ class PatternDictTab(QWidget):
             if response.status_code == 401:
                 raise Exception("JIRA 인증 실패. 사용자명과 API 토큰을 확인해주세요.")
             elif response.status_code == 400:
-                print(f"[JIRA DEBUG] 400 오류 - 요청 내용: {response.text}")
                 raise Exception(f"JIRA 요청 오류. JQL 문법을 확인해주세요.\n응답: {response.text}")
             elif response.status_code == 404:
                 raise Exception(f"JIRA API 엔드포인트를 찾을 수 없습니다: {search_url}")
             elif response.status_code != 200:
-                print(f"[JIRA DEBUG] {response.status_code} 오류 - 응답: {response.text}")
                 raise Exception(f"JIRA API 오류 (코드: {response.status_code}): {response.text}")
             
-            print(f"[JIRA DEBUG] 응답 상태: {response.status_code}")
             response.raise_for_status()
             
             data = response.json()
             issues = data.get("issues", [])
             total_issues = len(issues)
             
-            print(f"[JIRA DEBUG] 응답 데이터:")
             print(f"  - 전체 결과: {data.get('total', 0)}개")
             print(f"  - 현재 페이지: {total_issues}개")
             print(f"  - maxResults: {data.get('maxResults', 0)}")
             
             # 결과가 0개면 추가 디버깅
             if total_issues == 0:
-                print(f"[JIRA DEBUG] 결과가 0개입니다. 더 간단한 쿼리로 테스트해보겠습니다...")
                 # 최소한의 조건으로 재시도
                 test_jql = f'created >= "{start}"'
                 test_params = {
@@ -362,22 +355,19 @@ class PatternDictTab(QWidget):
                 if test_response.status_code == 200:
                     test_data = test_response.json()
                     test_total = test_data.get('total', 0)
-                    print(f"[JIRA DEBUG] 테스트 쿼리 '{test_jql}' 결과: {test_total}개")
                     
                     if test_total > 0:
-                        print(f"[JIRA DEBUG] 날짜 조건은 맞습니다. 다른 조건들을 확인해야 합니다.")
                         # 샘플 이슈 정보 출력
                         if test_data.get('issues'):
                             sample_issue = test_data['issues'][0]
-                            print(f"[JIRA DEBUG] 샘플 이슈:")
                             print(f"  - Key: {sample_issue.get('key')}")
                             print(f"  - Project: {sample_issue.get('fields', {}).get('project', {}).get('key')}")
                             print(f"  - Issue Type: {sample_issue.get('fields', {}).get('issuetype', {}).get('name')}")
                             print(f"  - Status: {sample_issue.get('fields', {}).get('status', {}).get('name')}")
                     else:
-                        print(f"[JIRA DEBUG] 해당 날짜 범위에 이슈가 없습니다.")
+                        print(f"No issues found for project: {project_key}")
                 else:
-                    print(f"[JIRA DEBUG] 테스트 쿼리 실패: {test_response.status_code}")
+                    print(f"Failed to get issues for project: {project_key}")
             
             # 티켓 데이터 처리
             progress.setLabelText(f"{total_issues}개 티켓 처리 중...")
@@ -407,14 +397,12 @@ class PatternDictTab(QWidget):
                     
                     reg_date = created[:10] if created else datetime.now().strftime('%Y-%m-%d')
                     
-                    print(f"[JIRA DEBUG] 티켓 {key} - 패턴명: '{pattern_name}', 분석내용: '{analysis[:50]}...'")
                     
                     # 패턴명과 분석내용이 모두 있는 경우만 처리
                     if pattern_name and analysis:
                         # 중복 확인
                         existing = self.db.get_pattern(pattern_name)
                         if existing:
-                            print(f"[JIRA DEBUG] 이미 등록된 패턴: {pattern_name}")
                             continue
                         
                         pattern = {
@@ -424,12 +412,11 @@ class PatternDictTab(QWidget):
                         }
                         patterns_to_save.append(pattern)
                         imported_count += 1
-                        print(f"[JIRA DEBUG] 패턴 추가 예정: {pattern_name}")
                     else:
-                        print(f"[JIRA DEBUG] 패턴명 또는 분석내용 누락으로 스킵: {key}")
+                        # 이미 존재하는 패턴인 경우 건너뛰기
+                        continue
                 
                 except Exception as e:
-                    print(f"[JIRA DEBUG] 티켓 {key} 처리 오류: {str(e)}")
                     continue
                 
                 # 진행률 업데이트

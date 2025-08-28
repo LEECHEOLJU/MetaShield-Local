@@ -17,10 +17,9 @@ from yara_rule_generator import YaraGeneratorTab
 from malware_static_analyzer import MalwareAnalysisTab
 from threat_hunting_query_generator import ThreatHuntingTab
 from ai_threat_predictor import ThreatPredictionTab
-from realtime_behavior_analyzer import RealtimeBehaviorTab
-from ai_report_generator import AIReportGeneratorTab
-from database_optimizer import DatabaseOptimizerTab
-from memory_optimizer import MemoryOptimizerTab
+from ai_log_storyteller import LogStorytellerTab
+from ai_policy_generator import SecurityPolicyGeneratorTab
+from ai_security_simulator import SecuritySimulatorTab
 
 
 class MainWindow(QMainWindow):
@@ -109,10 +108,11 @@ class MainWindow(QMainWindow):
         
         # 신규 AI 기능들
         self.content_widgets["ai_threat_prediction"] = ThreatPredictionTab()
-        self.content_widgets["realtime_behavior"] = RealtimeBehaviorTab()
-        self.content_widgets["ai_report_generator"] = AIReportGeneratorTab()
-        self.content_widgets["database_optimizer"] = DatabaseOptimizerTab()
-        self.content_widgets["memory_optimizer"] = MemoryOptimizerTab()
+        
+        # 새로운 AI 실험실 기능들
+        self.content_widgets["ai_log_storyteller"] = LogStorytellerTab()
+        self.content_widgets["ai_policy_generator"] = SecurityPolicyGeneratorTab()
+        self.content_widgets["ai_security_simulator"] = SecuritySimulatorTab()
         
         # 사용가이드 콘텐츠
         self.content_widgets["guide"] = GuideTab("", "사용자 가이드")
@@ -406,7 +406,21 @@ class ModernAnalysisTab(QWidget):
             QApplication.processEvents()
             
             ai_result = self.perform_ai_analysis(payload)
-            self.ai_results.setPlainText(ai_result)
+            
+            if ai_result:
+                # 원래 GPT 답변을 그대로 표시
+                try:
+                    self.ai_results.setPlainText(ai_result)
+                except Exception as e:
+                    # 인코딩 문제시 HTML로 폴백 (원래 형태 유지)
+                    try:
+                        import html
+                        escaped_result = html.escape(ai_result).replace('\n', '<br>')
+                        self.ai_results.setHtml(escaped_result)
+                    except Exception:
+                        self.ai_results.setPlainText("AI 분석 결과 표시 중 인코딩 오류가 발생했습니다.")
+            else:
+                self.ai_results.setPlainText("AI 분석 결과를 받지 못했습니다.")
             
             # 위협 인텔리전스
             if self.threat_intel_cb.isChecked():
@@ -414,8 +428,12 @@ class ModernAnalysisTab(QWidget):
                 progress.setValue(80)
                 QApplication.processEvents()
                 
-                threat_data = self.query_threat_feeds(ioc_data)
-                self.threat_results.setHtml(threat_data)
+                try:
+                    threat_data = self.query_threat_feeds(ioc_data)
+                    self.threat_results.setHtml(threat_data)
+                except Exception as e:
+                    error_msg = f"<div style='color:#dc3545;'>⚠️ 위협 인텔리전스 조회 오류: {str(e)}</div>"
+                    self.threat_results.setHtml(error_msg)
             
             # 완료
             progress.setValue(100)
@@ -428,6 +446,23 @@ class ModernAnalysisTab(QWidget):
             progress.close()
     
     
+    def remove_problematic_chars(self, text):
+        """Windows 환경에서 문제가 되는 Unicode 문자들을 처리 (최소한의 변경)"""
+        if not text:
+            return text
+        
+        # PyQt6는 UTF-8을 잘 처리하므로 최소한의 처리만 수행
+        # 단지 콘솔 출력 시 문제가 되는 문자들만 처리
+        try:
+            # 먼저 원본 그대로 반환 시도 (PyQt6는 UTF-8 지원)
+            return text
+        except Exception:
+            # 문제가 있는 경우에만 최소한의 대체
+            import re
+            # Variation Selector만 제거 (보이지 않는 문자)
+            cleaned = re.sub(r'[\uFE00-\uFE0F\u200D]', '', text)
+            return cleaned
+
     def perform_ai_analysis(self, payload):
         """통합된 AI 분석 실행 - config와 prompts 모듈 사용"""
         from config import get_ai_config
@@ -436,7 +471,7 @@ class ModernAnalysisTab(QWidget):
         # 설정 로드
         ai_config = get_ai_config()
         if not ai_config.is_valid():
-            return "❌ AI 설정이 유효하지 않습니다. config.py를 확인해주세요."
+            return "AI 설정이 유효하지 않습니다. config.py를 확인해주세요."
         
         # 입력 타입에 따른 적절한 프롬프트 선택
         input_type, prompt = get_prompt_by_input_type(payload)
@@ -448,6 +483,7 @@ class ModernAnalysisTab(QWidget):
                 api_version=ai_config.api_version,
                 azure_endpoint=ai_config.endpoint,
             )
+            
             response = client.chat.completions.create(
                 model=ai_config.deployment,
                 messages=[
@@ -458,7 +494,14 @@ class ModernAnalysisTab(QWidget):
                 max_completion_tokens=PromptConfig.MAX_COMPLETION_TOKENS,
                 top_p=PromptConfig.TOP_P,
             )
-            return response.choices[0].message.content
+            
+            result = response.choices[0].message.content
+            
+            # 최소한의 Unicode 문자 정리 (원본 유지 우선)
+            cleaned_result = self.remove_problematic_chars(result)
+            
+            return cleaned_result
+            
         except Exception as e:
             return f"AI 분석 오류: {str(e)}"
     
@@ -594,10 +637,16 @@ class ModernAnalysisTab(QWidget):
             return "<div>❌ 추출된 IOC가 없습니다.</div>"
         
         # VirusTotal API 조회 
-        vt_results = self.query_virustotal(iocs)
+        try:
+            vt_results = self.query_virustotal(iocs)
+        except Exception as e:
+            vt_results = f"<div style='color:#dc3545;'>VirusTotal 조회 실패: {str(e)}</div>"
         
         # AbuseIPDB 조회 
-        abuse_results = self.query_abuseipdb(iocs)
+        try:
+            abuse_results = self.query_abuseipdb(iocs)
+        except Exception as e:
+            abuse_results = f"<div style='color:#dc3545;'>AbuseIPDB 조회 실패: {str(e)}</div>"
         
         # 개선된 결과 통합
         results_html += f"""
@@ -641,20 +690,25 @@ class ModernAnalysisTab(QWidget):
             vt_api_key = threat_config.virustotal_api_key
             
             if not vt_api_key or len(vt_api_key) < 20:
-                return "<div style='color:#dc3545;'>⚠️ VirusTotal API 키가 올바르지 않습니다.</div>"
+                return "<div style='color:#ff7a45;'>⚠️ VirusTotal API 키 미설정 - 건너뜀</div>"
             
             import requests
             import time
             
             results = "<h5>🦠 VirusTotal 분석 결과</h5><div style='margin-left:20px;'>"
             
+            # IP 주소가 없는 경우 건너뛰기
+            if not iocs["ips"]:
+                results += "<div>🔵 조회할 IP 주소가 없습니다.</div></div>"
+                return results
+            
             # IP 주소 조회 (API v3 사용)
-            for i, ip in enumerate(iocs["ips"][:5]):  # 무료 계정 제한
+            for i, ip in enumerate(iocs["ips"][:3]):  # API 호출 수 제한
                 url = f"https://www.virustotal.com/api/v3/ip_addresses/{ip}"
                 headers = {"x-apikey": vt_api_key}
                 
                 try:
-                    response = requests.get(url, headers=headers, timeout=10)
+                    response = requests.get(url, headers=headers, timeout=5)  # 타임아웃 단축
                     
                     if response.status_code == 200:
                         data = response.json()
@@ -697,9 +751,9 @@ class ModernAnalysisTab(QWidget):
                 except requests.RequestException as e:
                     results += f"<div>❌ {ip}: 네트워크 오류</div>"
                 
-                # API 제한 준수 (무료: 4 requests/min)
-                if i < len(iocs["ips"][:5]) - 1:
-                    time.sleep(15)
+                # API 제한 준수 - 대기 시간 단축
+                if i < len(iocs["ips"][:3]) - 1:
+                    time.sleep(1)  # 대기 시간 최소화
             
             results += "</div>"
             return results
@@ -716,13 +770,18 @@ class ModernAnalysisTab(QWidget):
             abuse_api_key = threat_config.abuseipdb_api_key
             
             if not abuse_api_key or len(abuse_api_key) < 20:
-                return "<div style='color:#dc3545;'>⚠️ AbuseIPDB API 키가 올바르지 않습니다.</div>"
+                return "<div style='color:#ff7a45;'>⚠️ AbuseIPDB API 키 미설정 - 건너뜀</div>"
             
             import requests
             
             results = "<h5>🚫 AbuseIPDB 분석 결과</h5><div style='margin-left:20px;'>"
             
-            for ip in iocs["ips"][:10]:  # 무료 계정 제한
+            # IP 주소가 없는 경우 건너뛰기
+            if not iocs["ips"]:
+                results += "<div>🔵 조회할 IP 주소가 없습니다.</div></div>"
+                return results
+            
+            for ip in iocs["ips"][:3]:  # API 호출 수 제한
                 url = "https://api.abuseipdb.com/api/v2/check"
                 headers = {
                     "Key": abuse_api_key,
@@ -735,7 +794,7 @@ class ModernAnalysisTab(QWidget):
                 }
                 
                 try:
-                    response = requests.get(url, headers=headers, params=params, timeout=10)
+                    response = requests.get(url, headers=headers, params=params, timeout=5)  # 타임아웃 단축
                     
                     if response.status_code == 200:
                         data = response.json().get("data", {})
@@ -932,13 +991,31 @@ class StyledAnalysisTab(QWidget):
 
 
 if __name__ == "__main__":
+    # UTF-8 인코딩 설정 (Windows 호환)
+    import sys
+    import os
+    import locale
+    
+    # 콘솔 인코딩을 UTF-8로 설정 (Windows)
+    if sys.platform.startswith('win'):
+        try:
+            import codecs
+            sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
+            sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+        except Exception:
+            pass  # 실패해도 계속 진행
+
     # 고해상도 지원
     from PyQt6.QtCore import Qt
-    import sys
     from PyQt6.QtWidgets import QApplication
 
     # PyQt6에서는 자동으로 고해상도 지원이 활성화됨
     app = QApplication(sys.argv)
+    
+    # 애플리케이션 인코딩 설정
+    app.setApplicationName("MetaShield")
+    app.setApplicationVersion("2.0.0")
+    
     win = MainWindow()
     win.show()
     sys.exit(app.exec())

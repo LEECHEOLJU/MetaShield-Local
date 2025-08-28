@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-MetaShield is a comprehensive security analysis platform built with PyQt5, providing CVE vulnerability search, AI-powered security analysis, pattern analysis repository, and threat intelligence capabilities for security professionals.
+MetaShield is a comprehensive security analysis platform built with PyQt6, providing CVE vulnerability search, AI-powered security analysis, pattern analysis repository, AI laboratory with 13 advanced features, and threat intelligence capabilities for security professionals.
 
 ## Development Commands
 
@@ -13,14 +13,15 @@ python MetaShield_main.py
 ```
 
 ### Dependencies
-The project uses Python 3.7+ with the following key libraries:
-- PyQt5 for GUI framework
+The project uses Python 3.8+ with the following key libraries:
+- PyQt6 for GUI framework
 - requests for HTTP API communication
 - sqlite3 for local database
 - openai for Azure OpenAI API client
 - pandas for data manipulation
 - matplotlib for visualization
 - deep_translator for translation services
+- psutil for system monitoring
 
 ### Database Files
 - `cve_cache_3_1.db` - SQLite database for CVE data caching

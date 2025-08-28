@@ -100,6 +100,13 @@ def load_kev_list():
 # CVE API 요청 함수
 # -------------------------
 def get_cve_details(cve_id):
+    # CVE 형식 검증 추가
+    import re
+    cve_pattern = r'^CVE-\d{4}-\d{4,}$'
+    if not re.match(cve_pattern, cve_id.upper()):
+        print(f"Invalid CVE format: {cve_id} (expected format: CVE-YYYY-NNNN)")
+        return None
+    
     url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
     params = {"cveId": cve_id.upper()}
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -223,7 +230,7 @@ class CVEApp(QWidget):
         
         # CVE 입력창 - 기능에 맞는 초적 사이즈로 조정
         self.entry = QTextEdit()
-        self.entry.setPlaceholderText("CVE 코드 또는 키워드 입력:\n\nCVE-2021-44228\nCVE-2017-0144\nlog4j\nsql injection")
+        self.entry.setPlaceholderText("CVE 코드 입력 (한 줄에 하나씩):\n\nCVE-2021-44228\nCVE-2017-0144\nCVE-2019-0708\n\n※ 형식: CVE-YYYY-NNNN\n※ MITRE ATT&CK 기법(T1086 등)은 지원되지 않습니다.")
         self.entry.setMinimumHeight(160)  # 입력 공간 확대  
         self.entry.setMaximumHeight(200)
         search_card.add_widget(self.entry)
@@ -379,46 +386,63 @@ class CVEApp(QWidget):
 
     def search_cve(self):
         try:
-            print("DEBUG: search_cve started")
-            cve_list = [c.strip() for c in self.entry.toPlainText().split("\n") if c.strip()]
-            print(f"DEBUG: CVE list: {cve_list}")
+            cve_list = [c.strip().upper() for c in self.entry.toPlainText().split("\n") if c.strip()]
             
             if not cve_list:
                 QMessageBox.warning(self, "입력 오류", "CVE 코드를 입력하세요.")
                 return
 
+            # CVE 형식 사전 검증
+            import re
+            cve_pattern = r'^CVE-\d{4}-\d{4,}$'
+            invalid_cves = [cve for cve in cve_list if not re.match(cve_pattern, cve)]
+            
+            if invalid_cves:
+                invalid_list = '\n'.join(invalid_cves[:5])  # 최대 5개만 표시
+                if len(invalid_cves) > 5:
+                    invalid_list += f'\n... 및 {len(invalid_cves)-5}개 더'
+                
+                # MITRE ATT&CK 기법인지 확인
+                mitre_pattern = r'^T\d{4}(\.\d{3})?$'
+                if any(re.match(mitre_pattern, cve) for cve in invalid_cves):
+                    QMessageBox.information(self, "입력 형식 오류", 
+                        f"MITRE ATT&CK 기법 코드가 감지되었습니다:\n{invalid_list}\n\n"
+                        "CVE 검색에는 다음 형식을 사용하세요:\n"
+                        "• CVE-2021-44228 (Log4Shell)\n"
+                        "• CVE-2017-0144 (EternalBlue)\n"
+                        "• CVE-2019-0708 (BlueKeep)")
+                else:
+                    QMessageBox.warning(self, "입력 형식 오류", 
+                        f"잘못된 CVE 형식입니다:\n{invalid_list}\n\n"
+                        "올바른 형식: CVE-YYYY-NNNN\n"
+                        "예시: CVE-2021-44228")
+                return
+
             self.table.setRowCount(0)
             self.results = []
-            print("DEBUG: Table and results cleared")
 
             for cve_id in cve_list:
-                print(f"DEBUG: Processing {cve_id}")
                 data = get_cve_details(cve_id)
                 
                 if not data:
-                    print(f"DEBUG: No data for {cve_id}")
                     QMessageBox.warning(self, "검색 오류", f"{cve_id} 정보가 NVD에 없습니다.\n(아카이브에 저장되지 않음)")
                     self.db.delete_from_archive(cve_id)
                     continue
 
-                print(f"DEBUG: Data found for {cve_id}")
                 self.db.save_history(cve_id)
                 self.db.save_cache(cve_id, json.dumps(data))
                 parsed = self.parse_cve_data(cve_id, data)
 
-                # ✅ 중복 검색 제거
+                # 중복 검색 제거
                 if parsed["CVE"] not in [r["CVE"] for r in self.results]:
                     self.results.append(parsed)
-                    print(f"DEBUG: Added {cve_id} to results")
 
-            print(f"DEBUG: Total results: {len(self.results)}")
             self.update_table()
             self.load_archive_history()
             self.update_dashboard()
-            print("DEBUG: search_cve completed")
             
         except Exception as e:
-            print(f"DEBUG: Exception in search_cve: {str(e)}")
+            QMessageBox.critical(self, "오류", f"CVE 검색 중 오류가 발생했습니다: {str(e)}")
             import traceback
             traceback.print_exc()
 

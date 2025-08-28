@@ -34,6 +34,17 @@ class AIConfig:
     def is_valid(self) -> bool:
         """API 설정 유효성 검사"""
         return bool(self.endpoint and self.api_key and self.deployment)
+    
+    def validate_config(self) -> Tuple[bool, str]:
+        """설정 유효성 검사 (튜플 반환)"""
+        if not self.is_valid():
+            return False, "AI 설정이 유효하지 않습니다."
+        return True, "설정이 유효합니다."
+    
+    @property
+    def deployment_name(self) -> str:
+        """deployment 이름 반환 (호환성)"""
+        return self.deployment
 
 @dataclass
 class DatabaseConfig:
