@@ -24,7 +24,8 @@
       "Bash(rm:*)",
       "Bash(timeout 5 python:*)",
       "Bash(C:UserscheolAppDataLocalProgramsPythonPython313python.exe -m pip install Pillow)",
-      "Bash(\"C:\\Users\\cheol\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\" -m pip install Pillow)"
+      "Bash(\"C:\\Users\\cheol\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\" -m pip install Pillow)",
+      "Bash(\"C:\\Users\\cheol\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\" -m pip install selenium webdriver-manager)"
     ],
     "deny": [],
     "ask": []

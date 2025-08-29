@@ -615,27 +615,93 @@ class ThreatAnalysisWorker(QThread):
         screenshot_path = ""
         
         try:
+            # URL 정규화
+            normalized_url = self._normalize_url(url)
+            
+            # 브라우저 헤더로 요청
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
+            }
+            
             # HTTP 응답 코드 조회
-            response = requests.get(url, timeout=10, allow_redirects=True)
+            response = requests.get(
+                normalized_url, 
+                timeout=15, 
+                allow_redirects=True, 
+                headers=headers,
+                verify=False  # SSL 인증서 검증 비활성화
+            )
+            
             result['http_status'] = response.status_code
             result['status_text'] = response.reason
-            result['final_url'] = response.url
+            result['final_url'] = str(response.url)
+            result['response_time'] = response.elapsed.total_seconds()
+            result['content_type'] = response.headers.get('content-type', 'Unknown')
             
-            # 웹 스크린샷 캡처 (선택적)
-            screenshot_path = self.capture_screenshot(url)
+            # 웹 스크린샷 캡처
+            screenshot_path = self.capture_screenshot(normalized_url)
             
-        except requests.exceptions.RequestException as e:
-            result['error'] = str(e)
+        except requests.exceptions.SSLError as e:
+            result['error'] = f"SSL 인증서 오류: {str(e)}"
+            result['http_status'] = 0
+            result['status_text'] = "SSL 오류"
+            
+        except requests.exceptions.Timeout as e:
+            result['error'] = f"연결 시간 초과: {str(e)}"
+            result['http_status'] = 0
+            result['status_text'] = "연결 시간 초과"
+            
+        except requests.exceptions.ConnectionError as e:
+            result['error'] = f"연결 오류: {str(e)}"
             result['http_status'] = 0
             result['status_text'] = "연결 실패"
             
+        except requests.exceptions.RequestException as e:
+            result['error'] = f"요청 오류: {str(e)}"
+            result['http_status'] = 0
+            result['status_text'] = "요청 실패"
+            
         except Exception as e:
-            result['error'] = str(e)
+            result['error'] = f"예상치 못한 오류: {str(e)}"
+            result['http_status'] = 0
+            result['status_text'] = "분석 실패"
             
         return result, screenshot_path
+    
+    def _normalize_url(self, url: str) -> str:
+        """URL 정규화"""
+        if not url:
+            raise ValueError("URL이 비어있습니다")
+            
+        url = url.strip()
+        
+        # http:// 또는 https:// 추가
+        if not url.startswith(('http://', 'https://')):
+            # 기본적으로 https 사용
+            url = 'https://' + url
+            
+        # URL 유효성 검증
+        import re
+        url_pattern = re.compile(
+            r'^https?://'  # http:// or https://
+            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
+            r'localhost|'  # localhost...
+            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+            r'(?::\d+)?'  # optional port
+            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+            
+        if not url_pattern.match(url):
+            raise ValueError(f"유효하지 않은 URL 형식: {url}")
+            
+        return url
         
     def capture_screenshot(self, url: str) -> str:
-        """웹 페이지 스크린샷 캡처"""
+        """웹 페이지 스크린샷 캡처 (selenium 기반)"""
         try:
             import os
             from datetime import datetime
@@ -650,37 +716,149 @@ class ThreatAnalysisWorker(QThread):
             filename = f"screenshot_{timestamp}.png"
             filepath = os.path.join(screenshot_dir, filename)
             
-            # requests로 간단한 웹 페이지 정보 수집 후 더미 이미지 생성
-            try:
-                from PIL import Image, ImageDraw, ImageFont
+            # selenium으로 실제 스크린샷 캡처 시도
+            screenshot_path = self._capture_real_screenshot(url, filepath)
+            if screenshot_path:
+                return screenshot_path
                 
-                # 더미 스크린샷 이미지 생성 (실제로는 selenium/playwright 사용 권장)
-                img = Image.new('RGB', (800, 600), color='white')
-                draw = ImageDraw.Draw(img)
-                
-                # 텍스트 추가
-                try:
-                    font = ImageFont.truetype("arial.ttf", 20)
-                except:
-                    font = ImageFont.load_default()
-                    
-                draw.text((20, 20), f"URL: {url}", fill='black', font=font)
-                draw.text((20, 60), f"캡처 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", fill='gray', font=font)
-                draw.text((20, 100), "실제 웹페이지 스크린샷 기능은", fill='blue', font=font)
-                draw.text((20, 130), "selenium 또는 playwright로 구현 가능합니다.", fill='blue', font=font)
-                
-                # 테두리 그리기
-                draw.rectangle([(10, 10), (790, 590)], outline='gray', width=2)
-                
-                img.save(filepath)
-                return filepath
-                
-            except ImportError:
-                # PIL이 없는 경우 빈 파일 생성
-                with open(filepath, 'w') as f:
-                    f.write(f"Screenshot placeholder for {url}")
-                return filepath
+            # selenium 실패 시 PIL로 더미 이미지 생성
+            return self._create_dummy_screenshot(url, filepath)
                 
         except Exception as e:
             print(f"스크린샷 캡처 오류: {str(e)}")
+            return ""
+    
+    def _capture_real_screenshot(self, url: str, filepath: str) -> str:
+        """selenium을 사용한 실제 스크린샷 캡처"""
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.chrome.service import Service
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.common.exceptions import TimeoutException, WebDriverException
+            
+            # Chrome 옵션 설정
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')  # 백그라운드 실행
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options.add_argument('--disable-web-security')
+            chrome_options.add_argument('--allow-running-insecure-content')
+            chrome_options.add_argument('--ignore-certificate-errors')
+            chrome_options.add_argument('--ignore-ssl-errors')
+            chrome_options.add_argument('--ignore-certificate-errors-spki-list')
+            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+            
+            driver = None
+            try:
+                # ChromeDriver 자동 관리 시도
+                try:
+                    from webdriver_manager.chrome import ChromeDriverManager
+                    service = Service(ChromeDriverManager().install())
+                    driver = webdriver.Chrome(service=service, options=chrome_options)
+                except ImportError:
+                    # webdriver_manager가 없으면 시스템 PATH에서 찾기
+                    driver = webdriver.Chrome(options=chrome_options)
+                
+                # 페이지 로드 타임아웃 설정
+                driver.set_page_load_timeout(30)
+                
+                # URL 접속
+                driver.get(url)
+                
+                # 페이지 로딩 대기 (최대 10초)
+                try:
+                    WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.TAG_NAME, "body"))
+                    )
+                except TimeoutException:
+                    pass  # 타임아웃이어도 스크린샷은 캡처 시도
+                
+                # 추가 대기 (JavaScript 렌더링)
+                driver.implicitly_wait(3)
+                
+                # 스크린샷 캡처
+                driver.save_screenshot(filepath)
+                
+                print(f"실제 스크린샷 캡처 성공: {filepath}")
+                return filepath
+                
+            finally:
+                if driver:
+                    driver.quit()
+                    
+        except ImportError as e:
+            print(f"selenium 라이브러리가 설치되지 않음: {str(e)}")
+            return ""
+            
+        except WebDriverException as e:
+            print(f"ChromeDriver 오류: {str(e)}")
+            return ""
+            
+        except Exception as e:
+            print(f"실제 스크린샷 캡처 실패: {str(e)}")
+            return ""
+    
+    def _create_dummy_screenshot(self, url: str, filepath: str) -> str:
+        """PIL을 사용한 더미 스크린샷 생성"""
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            from datetime import datetime
+            
+            # 더미 스크린샷 이미지 생성
+            img = Image.new('RGB', (1200, 800), color='#f8f9fa')
+            draw = ImageDraw.Draw(img)
+            
+            # 폰트 설정
+            try:
+                title_font = ImageFont.truetype("arial.ttf", 24)
+                content_font = ImageFont.truetype("arial.ttf", 18)
+                small_font = ImageFont.truetype("arial.ttf", 14)
+            except:
+                title_font = ImageFont.load_default()
+                content_font = ImageFont.load_default()
+                small_font = ImageFont.load_default()
+            
+            # 헤더 배경
+            draw.rectangle([(0, 0), (1200, 80)], fill='#1890ff')
+            draw.text((20, 25), "🔍 MetaShield 위협 분석 - 웹페이지 스크린샷", fill='white', font=title_font)
+            
+            # 콘텐츠 영역
+            draw.text((40, 120), f"📄 URL: {url}", fill='#262626', font=content_font)
+            draw.text((40, 160), f"⏰ 캡처 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", fill='#595959', font=content_font)
+            
+            # 안내 메시지
+            draw.text((40, 220), "⚠️ 실제 웹페이지 스크린샷을 캡처하려면:", fill='#fa8c16', font=content_font)
+            draw.text((60, 260), "1. selenium 라이브러리 설치: pip install selenium", fill='#595959', font=small_font)
+            draw.text((60, 290), "2. ChromeDriver 설치 (자동): pip install webdriver-manager", fill='#595959', font=small_font)
+            draw.text((60, 320), "3. 또는 수동으로 ChromeDriver를 PATH에 추가", fill='#595959', font=small_font)
+            
+            # 상태 표시
+            draw.text((40, 380), "📊 현재 상태: 더미 이미지 (실제 웹페이지 아님)", fill='#d9534f', font=content_font)
+            
+            # 테두리
+            draw.rectangle([(20, 100), (1180, 780)], outline='#d9d9d9', width=2)
+            
+            # 하단 정보
+            draw.text((40, 750), f"Generated by MetaShield v2.1.0", fill='#8c8c8c', font=small_font)
+            
+            img.save(filepath)
+            print(f"더미 스크린샷 생성 완료: {filepath}")
+            return filepath
+            
+        except ImportError:
+            # PIL도 없는 경우 텍스트 파일 생성
+            with open(filepath.replace('.png', '.txt'), 'w', encoding='utf-8') as f:
+                f.write(f"MetaShield 웹페이지 스크린샷 보고서\n")
+                f.write(f"URL: {url}\n")
+                f.write(f"캡처 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"상태: PIL 라이브러리 미설치로 인한 텍스트 보고서\n")
+            return filepath.replace('.png', '.txt')
+            
+        except Exception as e:
+            print(f"더미 스크린샷 생성 실패: {str(e)}")
             return ""

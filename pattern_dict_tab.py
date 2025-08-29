@@ -1,4 +1,5 @@
 import json
+from typing import List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QListWidget, QTextEdit,
     QMessageBox, QLabel, QFileDialog, QApplication, QDateEdit, QSplitter, QProgressDialog
