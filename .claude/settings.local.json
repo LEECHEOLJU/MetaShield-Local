@@ -22,7 +22,9 @@
       "Bash(timeout 10 python MetaShield_main.py)",
       "Bash(del:*)",
       "Bash(rm:*)",
-      "Bash(timeout 5 python:*)"
+      "Bash(timeout 5 python:*)",
+      "Bash(C:UserscheolAppDataLocalProgramsPythonPython313python.exe -m pip install Pillow)",
+      "Bash(\"C:\\Users\\cheol\\AppData\\Local\\Programs\\Python\\Python313\\python.exe\" -m pip install Pillow)"
     ],
     "deny": [],
     "ask": []

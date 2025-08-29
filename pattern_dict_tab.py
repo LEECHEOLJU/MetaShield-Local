@@ -397,6 +397,12 @@ class PatternDictTab(QWidget):
                     
                     reg_date = created[:10] if created else datetime.now().strftime('%Y-%m-%d')
                     
+                    # 스크린샷 첨부파일 처리
+                    screenshots = self._download_jira_attachments(key, api_user, api_token, jira_url)
+                    if screenshots:
+                        analysis += "\n\n## 📸 첨부된 스크린샷\n"
+                        for screenshot_path in screenshots:
+                            analysis += f"- {screenshot_path}\n"
                     
                     # 패턴명과 분석내용이 모두 있는 경우만 처리
                     if pattern_name and analysis:
@@ -464,6 +470,74 @@ class PatternDictTab(QWidget):
         finally:
             progress.close()
 
+    def _download_jira_attachments(self, issue_key: str, api_user: str, api_token: str, jira_url: str) -> List[str]:
+        """Jira 티켓의 첨부파일(스크린샷) 다운로드"""
+        downloaded_files = []
+        
+        try:
+            # 첨부파일 정보 가져오기
+            base_url = jira_url.rstrip('/')
+            attachments_url = f"{base_url}/rest/api/2/issue/{issue_key}"
+            
+            response = requests.get(
+                attachments_url, 
+                headers={"Accept": "application/json"},
+                auth=(api_user, api_token),
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                print(f"첨부파일 정보 가져오기 실패 ({issue_key}): {response.status_code}")
+                return downloaded_files
+            
+            issue_data = response.json()
+            attachments = issue_data.get('fields', {}).get('attachment', [])
+            
+            if not attachments:
+                return downloaded_files
+            
+            # 스크린샷 디렉토리 생성
+            screenshots_dir = "jira_screenshots"
+            if not os.path.exists(screenshots_dir):
+                os.makedirs(screenshots_dir)
+            
+            for attachment in attachments:
+                filename = attachment.get('filename', '')
+                content_type = attachment.get('mimeType', '')
+                content_url = attachment.get('content', '')
+                
+                # 이미지 파일만 다운로드
+                if any(ext in filename.lower() for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']):
+                    try:
+                        # 파일 다운로드
+                        file_response = requests.get(
+                            content_url,
+                            auth=(api_user, api_token),
+                            timeout=60
+                        )
+                        
+                        if file_response.status_code == 200:
+                            # 안전한 파일명 생성
+                            safe_filename = f"{issue_key}_{filename}"
+                            file_path = os.path.join(screenshots_dir, safe_filename)
+                            
+                            # 파일 저장
+                            with open(file_path, 'wb') as f:
+                                f.write(file_response.content)
+                            
+                            downloaded_files.append(file_path)
+                            print(f"스크린샷 다운로드 완료: {file_path}")
+                        else:
+                            print(f"파일 다운로드 실패 ({filename}): {file_response.status_code}")
+                            
+                    except Exception as e:
+                        print(f"파일 다운로드 오류 ({filename}): {str(e)}")
+                        continue
+            
+        except Exception as e:
+            print(f"첨부파일 처리 오류 ({issue_key}): {str(e)}")
+        
+        return downloaded_files
 
     def clear_inputs(self):
         self.selected_id = None

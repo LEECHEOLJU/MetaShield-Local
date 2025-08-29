@@ -20,6 +20,7 @@ from ai_threat_predictor import ThreatPredictionTab
 from ai_log_storyteller import LogStorytellerTab
 from ai_policy_generator import SecurityPolicyGeneratorTab
 from ai_security_simulator import SecuritySimulatorTab
+from integrated_dashboard import JiraThreatDashboard
 
 
 class MainWindow(QMainWindow):
@@ -117,8 +118,12 @@ class MainWindow(QMainWindow):
         # 사용가이드 콘텐츠
         self.content_widgets["guide"] = GuideTab("", "사용자 가이드")
         
-        # 관제 고객사 콘텐츠들 - 빈 대시보드
-        for company in ["dashboard", "goodrich", "kurly", "finda", "gln", "hanwha"]:
+        # 관제 고객사 콘텐츠들
+        # dashboard는 JIRA 위협 분석 대시보드로 교체
+        self.content_widgets["dashboard"] = JiraThreatDashboard()
+        
+        # 나머지 고객사는 기본 대시보드
+        for company in ["goodrich", "kurly", "finda", "gln", "hanwha"]:
             self.content_widgets[company] = EnterpriseDashboard(company)
         
         # 모든 위젯들을 스택 위젯에 추가
